@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#1a3a5c" />
+  <meta name="description" content="LMP Invoicing System — Telecom Department" />
+  <title>LMP Invoicing System</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="icon" href="icon-192.png" type="image/png" sizes="192x192" />
+  <!-- SheetJS (used by both apps) -->
+  <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+  <!-- ExcelJS (used by POC Invoice Prep for styled export) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+</head>
+<body>
+
+  <!-- PWA install banner -->
+  <div id="install-banner">
+    <span>Install this app for quick offline access</span>
+    <button id="btn-install">Install App</button>
+  </div>
+
+  <!-- Sticky wrapper: header + tab bar scroll together -->
+  <div class="sticky-bar">
+
+    <!-- Unified header -->
+    <header>
+      <div class="header-inner">
+        <div class="header-text">
+          <h1>LMP Invoicing System</h1>
+          <p class="subtitle">Landmark Plus &mdash; Telecom Department</p>
+        </div>
+        <img src="LMP Big Logo.jpg" alt="Landmark Plus" class="header-logo" />
+      </div>
+    </header>
+
+    <!-- Tab bar -->
+    <nav class="tab-bar" role="tablist">
+      <button class="tab-btn active" role="tab" aria-selected="true"  data-tab="poc">&#128196; POC Invoice Prep</button>
+      <button class="tab-btn"        role="tab" aria-selected="false" data-tab="tsr">&#128203; TSR Submission Checker</button>
+    </nav>
+
+  </div>
+
+  <!-- ================================================================
+       TAB: POC Invoice Prep
+       ================================================================ -->
+  <div id="panel-poc" class="tab-panel active">
+    <main class="poc-main">
+
+      <!-- Upload Section -->
+      <section class="card poc-upload-card">
+        <h2>Upload Project File</h2>
+        <div class="drop-zone" id="dropZone">
+          <div class="drop-icon">&#128196;</div>
+          <p class="drop-label">Drag &amp; drop your Excel file here</p>
+          <p class="drop-sub">or</p>
+          <label class="btn btn-outline" for="fileInput">Browse File</label>
+          <input type="file" id="fileInput" accept=".xlsx,.xls,.xlsm,.csv" hidden />
+        </div>
+        <div class="file-info poc-file-info" id="fileInfo" hidden>
+          <span class="poc-file-icon">&#128196;</span>
+          <span id="fileName"></span>
+          <button class="btn-icon" id="clearFile" title="Remove file">&#10005;</button>
+        </div>
+        <div class="progress-wrap" id="progressWrap" hidden>
+          <div class="progress-bar-track">
+            <div class="progress-bar-fill" id="progressFill"></div>
+          </div>
+          <span class="progress-label" id="progressLabel">Analysing…</span>
+        </div>
+      </section>
+
+      <!-- Warnings -->
+      <div class="poc-warnings" id="warnings" hidden></div>
+
+      <!-- Results Section -->
+      <section class="card poc-results-card" id="resultsSection" hidden>
+        <div class="poc-results-header">
+          <h2>Results</h2>
+          <button class="btn btn-success" id="downloadBtn">&#8659; Download Output</button>
+        </div>
+        <div class="poc-stats-row">
+          <div class="poc-stat-box poc-stat-installation">
+            <span class="poc-stat-label">Installation Part Tasks</span>
+            <span class="poc-stat-value" id="step1Count">0</span>
+            <span class="poc-stat-amount" id="step1Amount">EGP 0</span>
+          </div>
+          <div class="poc-stat-box poc-stat-migration">
+            <span class="poc-stat-label">Migration Part Tasks</span>
+            <span class="poc-stat-value" id="step2Count">0</span>
+            <span class="poc-stat-amount" id="step2Amount">EGP 0</span>
+          </div>
+          <div class="poc-stat-box poc-stat-total">
+            <span class="poc-stat-label">Total Invoice Tasks</span>
+            <span class="poc-stat-value" id="totalCount">0</span>
+            <span class="poc-stat-amount poc-stat-amount-total" id="totalAmount">EGP 0</span>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ================================================================
+       TAB: TSR Submission Checker
+       ================================================================ -->
+  <div id="panel-tsr" class="tab-panel" style="display:none">
+    <main class="tsr-main">
+
+      <div id="error-message" role="alert"></div>
+
+      <!-- File Selection -->
+      <section id="step-files" class="card">
+        <h2>Select Files</h2>
+        <div class="file-cards">
+
+          <div id="card-tracking" class="file-card">
+            <div class="file-icon">&#128193;</div>
+            <div class="file-label">Task Tracking File (.xlsm)</div>
+            <button id="btn-pick-tracking" class="btn-secondary">Browse File</button>
+            <input type="file" id="tracking-input" accept=".xlsm,.xlsx" />
+            <span id="tracking-filename" class="filename-display">No file selected</span>
+            <div id="tracking-progress" class="file-progress"></div>
+          </div>
+
+          <div id="card-tsr" class="file-card">
+            <div class="file-icon">&#128193;</div>
+            <div class="file-label">TSR File (.xlsb)</div>
+            <button id="btn-pick-tsr" class="btn-secondary">Browse File</button>
+            <input type="file" id="tsr-input" accept=".xlsb,.xlsx" />
+            <span id="tsr-filename" class="filename-display">No file selected</span>
+            <div id="tsr-progress" class="file-progress"></div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- Loading -->
+      <div id="loading">
+        <div class="spinner"></div>
+        <p>Processing your files...</p>
+      </div>
+
+      <!-- Analysis (money cards) -->
+      <section id="step-analysis" class="card">
+        <h2>Analysis</h2>
+        <p id="summary"></p>
+        <div id="money-summary">
+          <div id="money-can-submit" class="money-card money-card-ok"></div>
+          <div id="money-pending"    class="money-card money-card-pending"></div>
+          <div id="money-need-po"    class="money-card money-card-needpo"></div>
+        </div>
+      </section>
+
+      <!-- TSR Remaining After Submission -->
+      <section id="step-results" class="card">
+        <h2>TSR Remaining After Submission</h2>
+        <p class="card-hint">Quantities and EGP value left in the TSR after all Can Submit sites are deducted.</p>
+        <div class="table-wrapper">
+          <table id="tsr-remaining-table">
+            <thead>
+              <tr>
+                <th>Line Item</th>
+                <th>Unit Price (EGP)</th>
+                <th>Remaining Qty</th>
+                <th>Total Value (EGP)</th>
+              </tr>
+            </thead>
+            <tbody id="tsr-remaining-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Export -->
+      <section id="step-export" class="card">
+        <h2>Export Results</h2>
+        <p class="card-hint">Downloads an Excel report with one row per matched tracking entry, sorted by site.</p>
+        <button id="btn-export" class="btn-primary">Export Results to Excel</button>
+        <p id="export-status"></p>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Unified footer -->
+  <footer>
+    <p>LMP Invoicing System &mdash; Landmark Plus Telecom Department</p>
+    <p>All Rights Reserved LMP 2026</p>
+  </footer>
+
+  <!-- App scripts -->
+  <script src="poc-app.js"></script>
+  <script src="tsr-app.js"></script>
+
+  <!-- Tab switching logic -->
+  <script>
+    (function () {
+      const tabBtns  = document.querySelectorAll('.tab-btn');
+      const panels   = document.querySelectorAll('.tab-panel');
+
+      tabBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          const target = btn.dataset.tab;
+
+          tabBtns.forEach(b => {
+            b.classList.toggle('active', b.dataset.tab === target);
+            b.setAttribute('aria-selected', b.dataset.tab === target ? 'true' : 'false');
+          });
+
+          panels.forEach(p => {
+            const show = p.id === 'panel-' + target;
+            p.style.display = show ? 'block' : 'none';
+            p.classList.toggle('active', show);
+          });
+        });
+      });
+    })();
+  </script>
+
+  <!-- PWA install handler -->
+  <script>
+    (function () {
+      let deferredPrompt = null;
+      window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredPrompt = e;
+        document.getElementById('install-banner').style.display = 'flex';
+      });
+      document.getElementById('btn-install').addEventListener('click', () => {
+        if (!deferredPrompt) return;
+        deferredPrompt.prompt();
+        deferredPrompt.userChoice.then(() => {
+          document.getElementById('install-banner').style.display = 'none';
+          deferredPrompt = null;
+        });
+      });
+    })();
+  </script>
+
+  <!-- Service Worker registration -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js');
+    }
+  </script>
+
+</body>
+</html>

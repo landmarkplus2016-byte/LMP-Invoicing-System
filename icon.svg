@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <!-- Dark navy rounded background -->
+  <rect width="192" height="192" rx="36" fill="#1a3a5c"/>
+
+  <!-- White document body (clipped to rounded rect shape) -->
+  <clipPath id="doc-clip">
+    <rect x="34" y="28" width="124" height="136" rx="10"/>
+  </clipPath>
+
+  <rect x="34" y="28" width="124" height="136" rx="10" fill="#ffffff"/>
+
+  <g clip-path="url(#doc-clip)">
+
+    <!-- Blue (#00B0F0) header strip on document -->
+    <rect x="34" y="28" width="124" height="46" fill="#00B0F0"/>
+
+    <!-- Signal / telecom bars (white) on blue header -->
+    <!-- Bar 1 (shortest) -->
+    <rect x="50" y="52" width="9" height="12" rx="2.5" fill="white"/>
+    <!-- Bar 2 -->
+    <rect x="63" y="46" width="9" height="18" rx="2.5" fill="white"/>
+    <!-- Bar 3 -->
+    <rect x="76" y="39" width="9" height="25" rx="2.5" fill="white"/>
+    <!-- Bar 4 (tallest) -->
+    <rect x="89" y="32" width="9" height="32" rx="2.5" fill="white"/>
+
+    <!-- "INV" label area in header (top-right) -->
+    <text x="138" y="55" font-family="'Segoe UI', Arial, sans-serif" font-size="14" font-weight="700" fill="white" opacity="0.85" text-anchor="middle">INV</text>
+
+    <!-- Invoice content lines on white area -->
+    <!-- Title bar (thicker) -->
+    <rect x="48" y="86" width="96" height="8" rx="4" fill="#d0dcea"/>
+    <!-- Line items -->
+    <rect x="48" y="101" width="76" height="6" rx="3" fill="#e4eaf3"/>
+    <rect x="48" y="113" width="88" height="6" rx="3" fill="#e4eaf3"/>
+    <rect x="48" y="125" width="62" height="6" rx="3" fill="#e4eaf3"/>
+
+    <!-- Gold divider line -->
+    <rect x="34" y="138" width="124" height="3" fill="#c8972a"/>
+
+    <!-- Light gold total section -->
+    <rect x="34" y="141" width="124" height="23" fill="#fff8e6"/>
+
+    <!-- Gold total amount bar -->
+    <rect x="48" y="150" width="96" height="8" rx="4" fill="#e8b84b"/>
+
+  </g>
+</svg>
