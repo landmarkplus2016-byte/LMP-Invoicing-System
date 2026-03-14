@@ -29,11 +29,11 @@
     <!-- Unified header -->
     <header>
       <div class="header-inner">
+        <img src="LMP Big Logo.jpg" alt="Landmark Plus" class="header-logo" />
         <div class="header-text">
           <h1>LMP Invoicing System</h1>
           <p class="subtitle">Landmark Plus &mdash; Telecom Department</p>
         </div>
-        <img src="LMP Big Logo.jpg" alt="Landmark Plus" class="header-logo" />
       </div>
     </header>
 
@@ -41,6 +41,7 @@
     <nav class="tab-bar" role="tablist">
       <button class="tab-btn active" role="tab" aria-selected="true"  data-tab="poc">&#128196; POC Invoice Prep</button>
       <button class="tab-btn"        role="tab" aria-selected="false" data-tab="tsr">&#128203; TSR Submission Checker</button>
+      <button class="tab-btn"        role="tab" aria-selected="false" data-tab="contractor">&#128209; Contractor Invoices</button>
     </nav>
 
   </div>
@@ -186,6 +187,59 @@
     </main>
   </div>
 
+  <!-- ================================================================
+       TAB: Contractor Invoices
+       ================================================================ -->
+  <div id="panel-contractor" class="tab-panel" style="display:none">
+    <main class="contractor-main">
+
+      <div id="con-error" role="alert" class="con-error-msg" style="display:none"></div>
+
+      <!-- File Selection -->
+      <section class="card">
+        <h2>Upload Tracking File</h2>
+        <div style="display:flex; justify-content:center; margin-top:0.5rem;">
+          <div id="card-con-track" class="file-card" style="width:100%; max-width:420px;">
+            <div class="file-icon">&#128193;</div>
+            <div class="file-label">Task Tracking File (.xlsm)</div>
+            <button id="btn-pick-con-track" class="btn-secondary">Browse File</button>
+            <input type="file" id="con-track-input" accept=".xlsm,.xlsx" style="display:none" />
+            <span id="con-track-filename" class="filename-display">No file selected</span>
+            <div id="con-track-progress" class="file-progress"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Loading -->
+      <div id="con-loading" style="display:none" class="con-loading-wrap">
+        <div class="spinner"></div>
+        <p>Analysing contractors…</p>
+      </div>
+
+      <!-- Results -->
+      <section id="con-results" class="card" style="display:none">
+        <h2>Contractor Summary</h2>
+        <p class="card-hint">One Excel file per contractor — each file contains a <em>Draft</em> sheet and a <em>Deduction</em> sheet.</p>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Contractor</th>
+                <th style="width:160px; text-align:right;">Invoice Amount</th>
+              </tr>
+            </thead>
+            <tbody id="con-summary-tbody"></tbody>
+          </table>
+        </div>
+        <div style="margin-top:1.25rem;">
+          <button id="btn-export-con" class="btn-primary" disabled>&#8659; Export All Files</button>
+          <p id="con-export-status" class="con-export-status"></p>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
   <!-- Unified footer -->
   <footer>
     <p>LMP Invoicing System &mdash; Landmark Plus Telecom Department</p>
@@ -195,6 +249,7 @@
   <!-- App scripts -->
   <script src="poc-app.js"></script>
   <script src="tsr-app.js"></script>
+  <script src="contractor-app.js"></script>
 
   <!-- Tab switching logic -->
   <script>
