@@ -137,26 +137,39 @@ function runAnalysis() {
   let taskDateColIndex         = -1;
   let prqColIndex              = -1;
   let certificateColIndex      = -1;
+  // Previously hardcoded — now detected from headers with fallback to known positions
+  let distanceColIndex         = 11;
+  let absQtyColIndex           = 12;
+  let lineItemColIndex         = 18;
+  let facDateColIndex          = 28;
+  let acceptanceWeekColIndex   = 30;
+  let poStatusColIndex         = 32;
 
   for (let c = 0; c < headerRow.length; c++) {
     const h = (headerRow[c] ?? '').toString().trim().toLowerCase();
-    if (h === 'id#' || h === 'id #')     idColIndex               = c;
-    if (h.includes('job code'))          jobCodeColIndex          = c;
-    if (h.includes('logical site'))      logicalSiteColIndex      = c;
-    if (h.includes('acceptance status')) acceptanceStatusColIndex = c;
-    if (h.includes('new total'))         newTotalColIndex         = c;
-    if (h.includes('task owner'))        vfTaskOwnerColIndex      = c;
-    if (h === 'vendor' || h.includes('vendor'))  vendorColIndex   = c;
-    if (h.includes('site option'))       siteOptionColIndex       = c;
-    if (h === 'facing' || h.includes('facing'))  facingColIndex   = c;
-    if (h.includes('task date'))         taskDateColIndex         = c;
-    if (h === 'prq' || h.includes('prq'))        prqColIndex      = c;
-    if (h.includes('certificate'))       certificateColIndex      = c;
+    if (h === 'id#' || h === 'id #')         idColIndex               = c;
+    if (h.includes('job code'))              jobCodeColIndex          = c;
+    if (h.includes('logical site'))          logicalSiteColIndex      = c;
+    if (h.includes('acceptance status'))     acceptanceStatusColIndex = c;
+    if (h.includes('new total'))             newTotalColIndex         = c;
+    if (h.includes('task owner'))            vfTaskOwnerColIndex      = c;
+    if (h === 'vendor' || h.includes('vendor'))      vendorColIndex   = c;
+    if (h.includes('site option'))           siteOptionColIndex       = c;
+    if (h === 'facing' || h.includes('facing'))      facingColIndex   = c;
+    if (h.includes('task date'))             taskDateColIndex         = c;
+    if (h === 'prq' || h.includes('prq'))            prqColIndex      = c;
+    if (h.includes('certificate'))           certificateColIndex      = c;
+    if (h.includes('distance'))              distanceColIndex         = c;
+    if (h.includes('absolute') && h.includes('qty')) absQtyColIndex   = c;
+    if (h.includes('line item'))             lineItemColIndex         = c;
+    if (h.includes('fac date'))              facDateColIndex          = c;
+    if (h.includes('acceptance week'))       acceptanceWeekColIndex   = c;
+    if (h.includes('po status'))             poStatusColIndex         = c;
   }
 
   const comboRows = new Map();
   dataRows.forEach((row, idx) => {
-    if (row[32] != null && row[32] !== '') return;
+    if (row[poStatusColIndex] != null && row[poStatusColIndex] !== '') return;
     const combo = comboKey(row, jobCodeColIndex, logicalSiteColIndex);
     if (combo === '|') return;
     if (!comboRows.has(combo)) comboRows.set(combo, []);
@@ -165,7 +178,7 @@ function runAnalysis() {
 
   const activeCombos = new Map();
   comboRows.forEach((entries, combo) => {
-    if (entries.some(({ row }) => row[28] != null && row[28] !== '')) {
+    if (entries.some(({ row }) => row[facDateColIndex] != null && row[facDateColIndex] !== '')) {
       activeCombos.set(combo, entries);
     }
   });
@@ -177,11 +190,11 @@ function runAnalysis() {
   const groups = new Map();
   activeCombos.forEach((entries) => {
     entries.forEach(({ row, rowIndex }) => {
-      if (row[28] == null || row[28] === '') return;
-      const lineItem  = (row[18] ?? '').toString().trim();
+      if (row[facDateColIndex] == null || row[facDateColIndex] === '') return;
+      const lineItem  = (row[lineItemColIndex] ?? '').toString().trim();
       if (!lineItem) return;
-      const distance  = (row[11] ?? '').toString().trim();
-      const absQty    = Number(row[12] ?? 1);
+      const distance  = (row[distanceColIndex] ?? '').toString().trim();
+      const absQty    = Number(row[absQtyColIndex] ?? 1);
       const actualQty = absQty * (distanceMultipliers[distance] ?? 1.0);
       const excelRow  = rowIndex + 5;
       if (!groups.has(lineItem)) {
@@ -194,8 +207,8 @@ function runAnalysis() {
       g.totalQty += actualQty;
       g.excelRowNumbers.push(excelRow);
       g.individualQtys.push(actualQty);
-      g.facDates.push(row[28]);
-      g.acceptanceWeeks.push(row[30]);
+      g.facDates.push(row[facDateColIndex]);
+      g.acceptanceWeeks.push(row[acceptanceWeekColIndex]);
     });
   });
 
@@ -269,9 +282,9 @@ function runAnalysis() {
 
   const canSubmitCandidates = [];
   activeCombos.forEach((entries, combo) => {
-    const facEntries           = entries.filter(({ row }) => row[28] != null && row[28] !== '');
-    const allFac               = entries.every(({ row }) => row[28] != null && row[28] !== '');
-    const allFacHaveAcceptWeek = facEntries.every(({ row }) => row[30] != null && row[30] !== '');
+    const facEntries           = entries.filter(({ row }) => row[facDateColIndex] != null && row[facDateColIndex] !== '');
+    const allFac               = entries.every(({ row }) => row[facDateColIndex] != null && row[facDateColIndex] !== '');
+    const allFacHaveAcceptWeek = facEntries.every(({ row }) => row[acceptanceWeekColIndex] != null && row[acceptanceWeekColIndex] !== '');
     if (!allFac || !allFacHaveAcceptWeek) {
       pendingCombos.add(combo);
     } else {
@@ -290,11 +303,11 @@ function runAnalysis() {
     for (const { row, rowIndex } of entries) {
       const excelRow = rowIndex + 5;
       if (excelRow < minRow) minRow = excelRow;
-      if (row[28] == null || row[28] === '') continue;
-      const li = (row[18] ?? '').toString().trim();
+      if (row[facDateColIndex] == null || row[facDateColIndex] === '') continue;
+      const li = (row[lineItemColIndex] ?? '').toString().trim();
       if (!li) continue;
-      const distance  = (row[11] ?? '').toString().trim();
-      const absQty    = Number(row[12] ?? 1);
+      const distance  = (row[distanceColIndex] ?? '').toString().trim();
+      const absQty    = Number(row[absQtyColIndex] ?? 1);
       const actualQty = absQty * (distanceMultipliers[distance] ?? 1.0);
       liQtyMap.set(li, (liQtyMap.get(li) ?? 0) + actualQty);
     }
@@ -342,8 +355,8 @@ function runAnalysis() {
   }
 
   function makeExportRow(row, comment) {
-    const distance  = (row[11] ?? '').toString().trim();
-    const absQty    = Number(row[12] ?? 1);
+    const distance  = (row[distanceColIndex] ?? '').toString().trim();
+    const absQty    = Number(row[absQtyColIndex] ?? 1);
     const actualQty = absQty * (distanceMultipliers[distance] ?? 1.0);
     const rawAcc    = acceptanceStatusColIndex >= 0 ? row[acceptanceStatusColIndex] : null;
     return {
@@ -353,7 +366,7 @@ function runAnalysis() {
       siteOption:       colVal(row, siteOptionColIndex),
       facing:           colVal(row, facingColIndex),
       taskDate:         taskDateColIndex >= 0 ? row[taskDateColIndex] : null,
-      lineItem:         (row[18] ?? '').toString().trim(),
+      lineItem:         (row[lineItemColIndex] ?? '').toString().trim(),
       absQty,
       prq:              colVal(row, prqColIndex),
       certificate:      colVal(row, certificateColIndex),
@@ -371,7 +384,7 @@ function runAnalysis() {
   activeCombos.forEach((entries, combo) => {
     if (!canSubmitCombos.has(combo)) return;
     entries.forEach(({ row }) => {
-      if ((row[18] ?? '').toString().trim() === '') return;
+      if ((row[lineItemColIndex] ?? '').toString().trim() === '') return;
       allExportItems.push(makeExportRow(row, 'Can Submit'));
     });
   });
@@ -379,7 +392,7 @@ function runAnalysis() {
   activeCombos.forEach((entries, combo) => {
     if (!pendingCombos.has(combo)) return;
     entries.forEach(({ row }) => {
-      if ((row[18] ?? '').toString().trim() === '') return;
+      if ((row[lineItemColIndex] ?? '').toString().trim() === '') return;
       allExportItems.push(makeExportRow(row, 'Pending'));
     });
   });
@@ -387,7 +400,7 @@ function runAnalysis() {
   activeCombos.forEach((entries, combo) => {
     if (!needPoCombos.has(combo)) return;
     entries.forEach(({ row }) => {
-      if ((row[18] ?? '').toString().trim() === '') return;
+      if ((row[lineItemColIndex] ?? '').toString().trim() === '') return;
       allExportItems.push(makeExportRow(row, 'Need PO'));
     });
   });
