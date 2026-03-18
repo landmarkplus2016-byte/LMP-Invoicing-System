@@ -137,34 +137,55 @@ function runAnalysis() {
   let taskDateColIndex         = -1;
   let prqColIndex              = -1;
   let certificateColIndex      = -1;
-  // Previously hardcoded — now detected from headers with fallback to known positions
-  let distanceColIndex         = 11;
-  let absQtyColIndex           = 12;
-  let lineItemColIndex         = 18;
-  let facDateColIndex          = 28;
-  let acceptanceWeekColIndex   = 30;
-  let poStatusColIndex         = 32;
+  let distanceColIndex         = -1;
+  let absQtyColIndex           = -1;
+  let lineItemColIndex         = -1;
+  let facDateColIndex          = -1;
+  let acceptanceWeekColIndex   = -1;
+  let poStatusColIndex         = -1;
 
   for (let c = 0; c < headerRow.length; c++) {
     const h = (headerRow[c] ?? '').toString().trim().toLowerCase();
-    if (h === 'id#' || h === 'id #')         idColIndex               = c;
-    if (h.includes('job code'))              jobCodeColIndex          = c;
-    if (h.includes('logical site'))          logicalSiteColIndex      = c;
-    if (h.includes('acceptance status'))     acceptanceStatusColIndex = c;
-    if (h.includes('new total'))             newTotalColIndex         = c;
-    if (h.includes('task owner'))            vfTaskOwnerColIndex      = c;
-    if (h === 'vendor' || h.includes('vendor'))      vendorColIndex   = c;
-    if (h.includes('site option'))           siteOptionColIndex       = c;
-    if (h === 'facing' || h.includes('facing'))      facingColIndex   = c;
-    if (h.includes('task date'))             taskDateColIndex         = c;
-    if (h === 'prq' || h.includes('prq'))            prqColIndex      = c;
-    if (h.includes('certificate'))           certificateColIndex      = c;
-    if (h.includes('distance'))              distanceColIndex         = c;
-    if (h.includes('absolute') && h.includes('qty')) absQtyColIndex   = c;
-    if (h.includes('line item'))             lineItemColIndex         = c;
-    if (h.includes('fac date'))              facDateColIndex          = c;
-    if (h.includes('acceptance week'))       acceptanceWeekColIndex   = c;
-    if (h.includes('po status'))             poStatusColIndex         = c;
+    // Use first-match for every column so a later unrelated column can't override the correct one
+    if (idColIndex               < 0 && (h === 'id#' || h === 'id #'))                              idColIndex               = c;
+    if (jobCodeColIndex          < 0 && h.includes('job code'))                                      jobCodeColIndex          = c;
+    if (logicalSiteColIndex      < 0 && h.includes('logical site'))                                  logicalSiteColIndex      = c;
+    if (acceptanceStatusColIndex < 0 && h.includes('acceptance status'))                             acceptanceStatusColIndex = c;
+    if (newTotalColIndex         < 0 && h.includes('new total'))                                     newTotalColIndex         = c;
+    if (vfTaskOwnerColIndex      < 0 && h.includes('task owner'))                                    vfTaskOwnerColIndex      = c;
+    if (vendorColIndex           < 0 && (h === 'vendor' || h.includes('vendor')))                   vendorColIndex           = c;
+    if (siteOptionColIndex       < 0 && h.includes('site option'))                                   siteOptionColIndex       = c;
+    if (facingColIndex           < 0 && (h === 'facing' || h.includes('facing')))                   facingColIndex           = c;
+    if (taskDateColIndex         < 0 && h.includes('task date'))                                     taskDateColIndex         = c;
+    if (prqColIndex              < 0 && (h === 'prq' || h.includes('prq')))                         prqColIndex              = c;
+    if (certificateColIndex      < 0 && h.includes('certificate'))                                   certificateColIndex      = c;
+    if (distanceColIndex         < 0 && h.includes('distance'))                                      distanceColIndex         = c;
+    if (absQtyColIndex           < 0 && h.includes('absolute') && (h.includes('qty') || h.includes('quant'))) absQtyColIndex = c;
+    if (lineItemColIndex         < 0 && (h === 'line item' || h === 'line items'))                  lineItemColIndex         = c;
+    if (facDateColIndex          < 0 && (h.includes('fac date') || h === 'fac'))                    facDateColIndex          = c;
+    if (acceptanceWeekColIndex   < 0 && h.includes('acceptance week'))                               acceptanceWeekColIndex   = c;
+    if (poStatusColIndex         < 0 && (h.includes('po status') || h.includes('po #')
+                                      || h.includes('purchase order')))                              poStatusColIndex         = c;
+  }
+
+  // Validate all critical columns were found
+  const missingCols = [];
+  if (jobCodeColIndex          < 0) missingCols.push('"Job Code"');
+  if (logicalSiteColIndex      < 0) missingCols.push('"Logical Site ID"');
+  if (lineItemColIndex         < 0) missingCols.push('"Line Item"');
+  if (facDateColIndex          < 0) missingCols.push('"FAC Date"');
+  if (acceptanceWeekColIndex   < 0) missingCols.push('"Acceptance Week"');
+  if (newTotalColIndex         < 0) missingCols.push('"New Total"');
+  if (absQtyColIndex           < 0) missingCols.push('"Absolute Quantity"');
+
+  if (missingCols.length > 0) {
+    const foundHeaders = headerRow
+      .map((h, i) => (h ? 'col' + i + ':"' + h + '"' : null))
+      .filter(Boolean).join(' | ');
+    throw new Error(
+      'Missing required column(s): ' + missingCols.join(', ') + '. ' +
+      'All headers found in row 4: [ ' + foundHeaders + ' ]'
+    );
   }
 
   const comboRows = new Map();
@@ -212,6 +233,26 @@ function runAnalysis() {
     });
   });
 
+  if (groups.size === 0) {
+    const sample = [];
+    activeCombos.forEach((entries) => {
+      if (sample.length >= 3) return;
+      entries.forEach(({ row }) => {
+        if (sample.length >= 3) return;
+        if (row[facDateColIndex] == null || row[facDateColIndex] === '') return;
+        sample.push(
+          'lineItem col' + lineItemColIndex + '="' + (row[lineItemColIndex] ?? 'NULL') + '"' +
+          ' facDate col' + facDateColIndex + '="' + (row[facDateColIndex] ?? 'NULL') + '"'
+        );
+      });
+    });
+    throw new Error(
+      'No line items could be read for FAC-dated rows. ' +
+      'lineItemCol=' + lineItemColIndex + ', facDateCol=' + facDateColIndex + '. ' +
+      'Sample FAC-dated rows: [ ' + (sample.join(' | ') || 'none') + ' ]'
+    );
+  }
+
   const tsrSheet = tsrWorkbook.Sheets['Request Form - VF'];
   if (!tsrSheet) {
     throw new Error('Wrong file loaded in TSR. Expected sheet: Request Form - VF');
@@ -221,20 +262,43 @@ function runAnalysis() {
 
   let headerRowIdx = -1;
   for (let i = 0; i < tsrRows.length; i++) {
-    const c = tsrRows[i][6];
-    if (c && c.toString().toLowerCase().includes('item description')) {
-      headerRowIdx = i;
-      break;
+    const row = tsrRows[i];
+    for (let c = 0; c < row.length; c++) {
+      if (row[c] && row[c].toString().toLowerCase().includes('item description')) {
+        headerRowIdx = i;
+        break;
+      }
+    }
+    if (headerRowIdx >= 0) break;
+  }
+
+  // Detect TSR column positions from the header row
+  let tsrItemColIndex      = -1;
+  let tsrUnitPriceColIndex = -1;
+  let tsrRemainingColIndex = -1;
+
+  if (headerRowIdx >= 0) {
+    const tsrHeader = tsrRows[headerRowIdx];
+    for (let c = 0; c < tsrHeader.length; c++) {
+      const h = (tsrHeader[c] ?? '').toString().trim().toLowerCase();
+      if (tsrItemColIndex      < 0 && h.includes('item description'))                       tsrItemColIndex      = c;
+      if (tsrUnitPriceColIndex < 0 && h.includes('unit price'))                             tsrUnitPriceColIndex = c;
+      if (tsrRemainingColIndex < 0 && h.includes('remaining') && !h.includes('after'))     tsrRemainingColIndex = c;
     }
   }
+
+  // Fall back to original hardcoded positions if headers not found
+  if (tsrItemColIndex      < 0) tsrItemColIndex      = 6;
+  if (tsrUnitPriceColIndex < 0) tsrUnitPriceColIndex = 12;
+  if (tsrRemainingColIndex < 0) tsrRemainingColIndex = 50;
 
   const tsrMap = new Map();
   if (headerRowIdx >= 0) {
     for (let i = headerRowIdx + 1; i < tsrRows.length; i++) {
-      const itemDesc = tsrRows[i][6];
+      const itemDesc = tsrRows[i][tsrItemColIndex];
       if (itemDesc == null || itemDesc === '') continue;
-      const remaining = tsrRows[i][50];
-      const unitPrice = tsrRows[i][12];
+      const remaining = tsrRows[i][tsrRemainingColIndex];
+      const unitPrice = tsrRows[i][tsrUnitPriceColIndex];
       if (remaining == null || remaining === '' || Number(remaining) <= 0) continue;
       if (unitPrice == null || unitPrice === '') continue;
       tsrMap.set(itemDesc.toString().trim(), {
@@ -332,7 +396,7 @@ function runAnalysis() {
       if (available === undefined || qty > available + 0.005) { canFit = false; break; }
     }
 
-    if (canFit) {
+    if (canFit && liQtyMap.size > 0) {
       for (const [li, qty] of liQtyMap) tsrAvailable.set(li, tsrAvailable.get(li) - qty);
       canSubmitCombos.add(combo);
     } else {

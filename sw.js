@@ -4,7 +4,7 @@
 // CDN libraries (SheetJS, ExcelJS) are NOT cached — pulled fresh each session.
 // =============================================================================
 
-const CACHE = 'lmp-invoicing-v2';
+const CACHE = 'lmp-invoicing-v3';
 const FILES = [
   './',
   './index.html',

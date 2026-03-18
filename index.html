@@ -23,228 +23,255 @@
     <button id="btn-install">Install App</button>
   </div>
 
-  <!-- Sticky wrapper: header + tab bar scroll together -->
-  <div class="sticky-bar">
+  <div class="app-layout">
 
-    <!-- Unified header -->
-    <header>
-      <div class="header-inner">
-        <img src="LMP Big Logo.jpg" alt="Landmark Plus" class="header-logo" />
-        <div class="header-text">
-          <h1>LMP Invoicing System</h1>
-          <p class="subtitle">Landmark Plus &mdash; Telecom Department</p>
+    <!-- ================================================================
+         SIDEBAR
+         ================================================================ -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <img src="LMP Big Logo.jpg" alt="Landmark Plus" class="sidebar-logo" />
+        <div class="sidebar-brand">
+          <span class="sidebar-title">LMP Invoicing System</span>
+          <span class="sidebar-subtitle">Landmark Plus &mdash; Telecom Dept.</span>
         </div>
       </div>
-    </header>
 
-    <!-- Tab bar -->
-    <nav class="tab-bar" role="tablist">
-      <button class="tab-btn active" role="tab" aria-selected="true"  data-tab="poc">&#128196; POC Invoice Prep</button>
-      <button class="tab-btn"        role="tab" aria-selected="false" data-tab="tsr">&#128203; TSR Submission Checker</button>
-      <button class="tab-btn"        role="tab" aria-selected="false" data-tab="contractor">&#128209; Contractor Invoices</button>
-    </nav>
+      <nav class="sidebar-nav" role="tablist">
+        <button class="nav-item active" role="tab" aria-selected="true" data-tab="poc">
+          <span class="nav-icon">&#128196;</span>
+          <span class="nav-label">POC Invoice Prep</span>
+        </button>
+        <button class="nav-item" role="tab" aria-selected="false" data-tab="tsr">
+          <span class="nav-icon">&#128203;</span>
+          <span class="nav-label">TSR Submission Checker</span>
+        </button>
+        <button class="nav-item" role="tab" aria-selected="false" data-tab="contractor">
+          <span class="nav-icon">&#128209;</span>
+          <span class="nav-label">Contractor Invoices</span>
+        </button>
+      </nav>
 
-  </div>
+      <div class="sidebar-footer">
+        <button class="sidebar-refresh-btn" id="btn-refresh" title="Clear all data and start a new analysis">
+          <span class="nav-icon">&#8635;</span>
+          <span class="nav-label">New Analysis</span>
+        </button>
+      </div>
+    </aside>
 
-  <!-- ================================================================
-       TAB: POC Invoice Prep
-       ================================================================ -->
-  <div id="panel-poc" class="tab-panel active">
-    <main class="poc-main">
+    <!-- ================================================================
+         MAIN WRAPPER
+         ================================================================ -->
+    <div class="main-wrapper">
 
-      <!-- Upload Section -->
-      <section class="card poc-upload-card">
-        <h2>Upload Project File</h2>
-        <div class="drop-zone" id="dropZone">
-          <div class="drop-icon">&#128196;</div>
-          <p class="drop-label">Drag &amp; drop your Excel file here</p>
-          <p class="drop-sub">or</p>
-          <label class="btn btn-outline" for="fileInput">Browse File</label>
-          <input type="file" id="fileInput" accept=".xlsx,.xls,.xlsm,.csv" hidden />
-        </div>
-        <div class="file-info poc-file-info" id="fileInfo" hidden>
-          <span class="poc-file-icon">&#128196;</span>
-          <span id="fileName"></span>
-          <button class="btn-icon" id="clearFile" title="Remove file">&#10005;</button>
-        </div>
-        <div class="progress-wrap" id="progressWrap" hidden>
-          <div class="progress-bar-track">
-            <div class="progress-bar-fill" id="progressFill"></div>
-          </div>
-          <span class="progress-label" id="progressLabel">Analysing…</span>
-        </div>
-      </section>
-
-      <!-- Warnings -->
-      <div class="poc-warnings" id="warnings" hidden></div>
-
-      <!-- Results Section -->
-      <section class="card poc-results-card" id="resultsSection" hidden>
-        <div class="poc-results-header">
-          <h2>Results</h2>
-          <button class="btn btn-success" id="downloadBtn">&#8659; Download Output</button>
-        </div>
-        <div class="poc-stats-row">
-          <div class="poc-stat-box poc-stat-installation">
-            <span class="poc-stat-label">Installation Part Tasks</span>
-            <span class="poc-stat-value" id="step1Count">0</span>
-            <span class="poc-stat-amount" id="step1Amount">EGP 0</span>
-          </div>
-          <div class="poc-stat-box poc-stat-migration">
-            <span class="poc-stat-label">Migration Part Tasks</span>
-            <span class="poc-stat-value" id="step2Count">0</span>
-            <span class="poc-stat-amount" id="step2Amount">EGP 0</span>
-          </div>
-          <div class="poc-stat-box poc-stat-total">
-            <span class="poc-stat-label">Total Invoice Tasks</span>
-            <span class="poc-stat-value" id="totalCount">0</span>
-            <span class="poc-stat-amount poc-stat-amount-total" id="totalAmount">EGP 0</span>
-          </div>
-        </div>
-      </section>
-
-    </main>
-  </div>
-
-  <!-- ================================================================
-       TAB: TSR Submission Checker
-       ================================================================ -->
-  <div id="panel-tsr" class="tab-panel" style="display:none">
-    <main class="tsr-main">
-
-      <div id="error-message" role="alert"></div>
-
-      <!-- File Selection -->
-      <section id="step-files" class="card">
-        <h2>Select Files</h2>
-        <div class="file-cards">
-
-          <div id="card-tracking" class="file-card">
-            <div class="file-icon">&#128193;</div>
-            <div class="file-label">Task Tracking File (.xlsm)</div>
-            <button id="btn-pick-tracking" class="btn-secondary">Browse File</button>
-            <input type="file" id="tracking-input" accept=".xlsm,.xlsx" />
-            <span id="tracking-filename" class="filename-display">No file selected</span>
-            <div id="tracking-progress" class="file-progress"></div>
-          </div>
-
-          <div id="card-tsr" class="file-card">
-            <div class="file-icon">&#128193;</div>
-            <div class="file-label">TSR File (.xlsb)</div>
-            <button id="btn-pick-tsr" class="btn-secondary">Browse File</button>
-            <input type="file" id="tsr-input" accept=".xlsb,.xlsx" />
-            <span id="tsr-filename" class="filename-display">No file selected</span>
-            <div id="tsr-progress" class="file-progress"></div>
-          </div>
-
-        </div>
-      </section>
-
-      <!-- Loading -->
-      <div id="loading">
-        <div class="spinner"></div>
-        <p>Processing your files...</p>
+      <!-- Page title bar -->
+      <div class="content-header">
+        <h1 class="page-title" id="page-title">POC Invoice Prep</h1>
       </div>
 
-      <!-- Analysis (money cards) -->
-      <section id="step-analysis" class="card">
-        <h2>Analysis</h2>
-        <p id="summary"></p>
-        <div id="money-summary">
-          <div id="money-can-submit" class="money-card money-card-ok"></div>
-          <div id="money-pending"    class="money-card money-card-pending"></div>
-          <div id="money-need-po"    class="money-card money-card-needpo"></div>
-        </div>
-      </section>
+      <!-- ================================================================
+           TAB: POC Invoice Prep
+           ================================================================ -->
+      <div id="panel-poc" class="tab-panel active">
+        <main class="poc-main">
 
-      <!-- TSR Remaining After Submission -->
-      <section id="step-results" class="card">
-        <h2>TSR Remaining After Submission</h2>
-        <p class="card-hint">Quantities and EGP value left in the TSR after all Can Submit sites are deducted.</p>
-        <div class="table-wrapper">
-          <table id="tsr-remaining-table">
-            <thead>
-              <tr>
-                <th>Line Item</th>
-                <th>Unit Price (EGP)</th>
-                <th>Remaining Qty</th>
-                <th>Total Value (EGP)</th>
-              </tr>
-            </thead>
-            <tbody id="tsr-remaining-body"></tbody>
-          </table>
-        </div>
-      </section>
+          <!-- Upload Section -->
+          <section class="card poc-upload-card">
+            <h2>Upload Project File</h2>
+            <div class="drop-zone" id="dropZone">
+              <div class="drop-icon">&#128196;</div>
+              <p class="drop-label">Drag &amp; drop your Excel file here</p>
+              <p class="drop-sub">or</p>
+              <label class="btn btn-outline" for="fileInput">Browse File</label>
+              <input type="file" id="fileInput" accept=".xlsx,.xls,.xlsm,.csv" hidden />
+            </div>
+            <div class="file-info poc-file-info" id="fileInfo" hidden>
+              <span class="poc-file-icon">&#128196;</span>
+              <span id="fileName"></span>
+              <button class="btn-icon" id="clearFile" title="Remove file">&#10005;</button>
+            </div>
+            <div class="progress-wrap" id="progressWrap" hidden>
+              <div class="progress-bar-track">
+                <div class="progress-bar-fill" id="progressFill"></div>
+              </div>
+              <span class="progress-label" id="progressLabel">Analysing…</span>
+            </div>
+          </section>
 
-      <!-- Export -->
-      <section id="step-export" class="card">
-        <h2>Export Results</h2>
-        <p class="card-hint">Downloads an Excel report with one row per matched tracking entry, sorted by site.</p>
-        <button id="btn-export" class="btn-primary">Export Results to Excel</button>
-        <p id="export-status"></p>
-      </section>
+          <!-- Warnings -->
+          <div class="poc-warnings" id="warnings" hidden></div>
 
-    </main>
-  </div>
+          <!-- Results Section -->
+          <section class="card poc-results-card" id="resultsSection" hidden>
+            <div class="poc-results-header">
+              <h2>Results</h2>
+              <button class="btn btn-success" id="downloadBtn">&#8659; Download Output</button>
+            </div>
+            <div class="poc-stats-row">
+              <div class="poc-stat-box poc-stat-installation">
+                <span class="poc-stat-label">Installation Part Tasks</span>
+                <span class="poc-stat-value" id="step1Count">0</span>
+                <span class="poc-stat-amount" id="step1Amount">EGP 0</span>
+              </div>
+              <div class="poc-stat-box poc-stat-migration">
+                <span class="poc-stat-label">Migration Part Tasks</span>
+                <span class="poc-stat-value" id="step2Count">0</span>
+                <span class="poc-stat-amount" id="step2Amount">EGP 0</span>
+              </div>
+              <div class="poc-stat-box poc-stat-total">
+                <span class="poc-stat-label">Total Invoice Tasks</span>
+                <span class="poc-stat-value" id="totalCount">0</span>
+                <span class="poc-stat-amount poc-stat-amount-total" id="totalAmount">EGP 0</span>
+              </div>
+            </div>
+          </section>
 
-  <!-- ================================================================
-       TAB: Contractor Invoices
-       ================================================================ -->
-  <div id="panel-contractor" class="tab-panel" style="display:none">
-    <main class="contractor-main">
-
-      <div id="con-error" role="alert" class="con-error-msg" style="display:none"></div>
-
-      <!-- File Selection -->
-      <section class="card">
-        <h2>Upload Tracking File</h2>
-        <div style="display:flex; justify-content:center; margin-top:0.5rem;">
-          <div id="card-con-track" class="file-card" style="width:100%; max-width:420px;">
-            <div class="file-icon">&#128193;</div>
-            <div class="file-label">Task Tracking File (.xlsm)</div>
-            <button id="btn-pick-con-track" class="btn-secondary">Browse File</button>
-            <input type="file" id="con-track-input" accept=".xlsm,.xlsx" style="display:none" />
-            <span id="con-track-filename" class="filename-display">No file selected</span>
-            <div id="con-track-progress" class="file-progress"></div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Loading -->
-      <div id="con-loading" style="display:none" class="con-loading-wrap">
-        <div class="spinner"></div>
-        <p>Analysing contractors…</p>
+        </main>
       </div>
 
-      <!-- Results -->
-      <section id="con-results" class="card" style="display:none">
-        <h2>Contractor Summary</h2>
-        <p class="card-hint">One Excel file per contractor — each file contains a <em>Draft</em> sheet and a <em>Deduction</em> sheet.</p>
-        <div class="table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                <th>Contractor</th>
-                <th style="width:160px; text-align:right;">Invoice Amount</th>
-              </tr>
-            </thead>
-            <tbody id="con-summary-tbody"></tbody>
-          </table>
-        </div>
-        <div style="margin-top:1.25rem;">
-          <button id="btn-export-con" class="btn-primary" disabled>&#8659; Export All Files</button>
-          <p id="con-export-status" class="con-export-status"></p>
-        </div>
-      </section>
+      <!-- ================================================================
+           TAB: TSR Submission Checker
+           ================================================================ -->
+      <div id="panel-tsr" class="tab-panel" style="display:none">
+        <main class="tsr-main">
 
-    </main>
-  </div>
+          <div id="error-message" role="alert"></div>
 
-  <!-- Unified footer -->
-  <footer>
-    <p>LMP Invoicing System &mdash; Landmark Plus Telecom Department</p>
-    <p>All Rights Reserved LMP 2026</p>
-  </footer>
+          <!-- File Selection -->
+          <section id="step-files" class="card">
+            <h2>Select Files</h2>
+            <div class="file-cards">
+
+              <div id="card-tracking" class="file-card">
+                <div class="file-icon">&#128193;</div>
+                <div class="file-label">Task Tracking File (.xlsm)</div>
+                <button id="btn-pick-tracking" class="btn-secondary">Browse File</button>
+                <input type="file" id="tracking-input" accept=".xlsm,.xlsx" />
+                <span id="tracking-filename" class="filename-display">No file selected</span>
+                <div id="tracking-progress" class="file-progress"></div>
+              </div>
+
+              <div id="card-tsr" class="file-card">
+                <div class="file-icon">&#128193;</div>
+                <div class="file-label">TSR File (.xlsb)</div>
+                <button id="btn-pick-tsr" class="btn-secondary">Browse File</button>
+                <input type="file" id="tsr-input" accept=".xlsb,.xlsx" />
+                <span id="tsr-filename" class="filename-display">No file selected</span>
+                <div id="tsr-progress" class="file-progress"></div>
+              </div>
+
+            </div>
+          </section>
+
+          <!-- Loading -->
+          <div id="loading">
+            <div class="spinner"></div>
+            <p>Processing your files...</p>
+          </div>
+
+          <!-- Analysis (money cards) -->
+          <section id="step-analysis" class="card">
+            <h2>Analysis</h2>
+            <p id="summary"></p>
+            <div id="money-summary">
+              <div id="money-can-submit" class="money-card money-card-ok"></div>
+              <div id="money-pending"    class="money-card money-card-pending"></div>
+              <div id="money-need-po"    class="money-card money-card-needpo"></div>
+            </div>
+          </section>
+
+          <!-- TSR Remaining After Submission -->
+          <section id="step-results" class="card">
+            <h2>TSR Remaining After Submission</h2>
+            <p class="card-hint">Quantities and EGP value left in the TSR after all Can Submit sites are deducted.</p>
+            <div class="table-wrapper">
+              <table id="tsr-remaining-table">
+                <thead>
+                  <tr>
+                    <th>Line Item</th>
+                    <th>Unit Price (EGP)</th>
+                    <th>Remaining Qty</th>
+                    <th>Total Value (EGP)</th>
+                  </tr>
+                </thead>
+                <tbody id="tsr-remaining-body"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <!-- Export -->
+          <section id="step-export" class="card">
+            <h2>Export Results</h2>
+            <p class="card-hint">Downloads an Excel report with one row per matched tracking entry, sorted by site.</p>
+            <button id="btn-export" class="btn-primary">Export Results to Excel</button>
+            <p id="export-status"></p>
+          </section>
+
+        </main>
+      </div>
+
+      <!-- ================================================================
+           TAB: Contractor Invoices
+           ================================================================ -->
+      <div id="panel-contractor" class="tab-panel" style="display:none">
+        <main class="contractor-main">
+
+          <div id="con-error" role="alert" class="con-error-msg" style="display:none"></div>
+
+          <!-- File Selection -->
+          <section class="card">
+            <h2>Upload Tracking File</h2>
+            <div style="display:flex; justify-content:center; margin-top:0.5rem;">
+              <div id="card-con-track" class="file-card" style="width:100%; max-width:420px;">
+                <div class="file-icon">&#128193;</div>
+                <div class="file-label">Task Tracking File (.xlsm)</div>
+                <button id="btn-pick-con-track" class="btn-secondary">Browse File</button>
+                <input type="file" id="con-track-input" accept=".xlsm,.xlsx" style="display:none" />
+                <span id="con-track-filename" class="filename-display">No file selected</span>
+                <div id="con-track-progress" class="file-progress"></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Loading -->
+          <div id="con-loading" style="display:none" class="con-loading-wrap">
+            <div class="spinner"></div>
+            <p>Analysing contractors…</p>
+          </div>
+
+          <!-- Results -->
+          <section id="con-results" class="card" style="display:none">
+            <h2>Contractor Summary</h2>
+            <p class="card-hint">One Excel file per contractor — each file contains a <em>Draft</em> sheet and a <em>Deduction</em> sheet.</p>
+            <div class="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Contractor</th>
+                    <th style="width:160px; text-align:right;">Invoice Amount</th>
+                  </tr>
+                </thead>
+                <tbody id="con-summary-tbody"></tbody>
+              </table>
+            </div>
+            <div style="margin-top:1.25rem;">
+              <button id="btn-export-con" class="btn-primary" disabled>&#8659; Export All Files</button>
+              <p id="con-export-status" class="con-export-status"></p>
+            </div>
+          </section>
+
+        </main>
+      </div>
+
+      <!-- Unified footer -->
+      <footer>
+        <p>LMP Invoicing System &mdash; Landmark Plus Telecom Department</p>
+        <p>All Rights Reserved LMP 2026</p>
+      </footer>
+
+    </div><!-- /.main-wrapper -->
+  </div><!-- /.app-layout -->
 
   <!-- App scripts -->
   <script src="poc-app.js"></script>
@@ -254,14 +281,21 @@
   <!-- Tab switching logic -->
   <script>
     (function () {
-      const tabBtns  = document.querySelectorAll('.tab-btn');
+      const navItems = document.querySelectorAll('.nav-item');
       const panels   = document.querySelectorAll('.tab-panel');
+      const pageTitle = document.getElementById('page-title');
 
-      tabBtns.forEach(btn => {
+      const tabLabels = {
+        poc:        'POC Invoice Prep',
+        tsr:        'TSR Submission Checker',
+        contractor: 'Contractor Invoices'
+      };
+
+      navItems.forEach(btn => {
         btn.addEventListener('click', () => {
           const target = btn.dataset.tab;
 
-          tabBtns.forEach(b => {
+          navItems.forEach(b => {
             b.classList.toggle('active', b.dataset.tab === target);
             b.setAttribute('aria-selected', b.dataset.tab === target ? 'true' : 'false');
           });
@@ -271,6 +305,8 @@
             p.style.display = show ? 'block' : 'none';
             p.classList.toggle('active', show);
           });
+
+          if (pageTitle) pageTitle.textContent = tabLabels[target] || '';
         });
       });
     })();
@@ -294,6 +330,13 @@
         });
       });
     })();
+  </script>
+
+  <!-- Refresh / New Analysis -->
+  <script>
+    document.getElementById('btn-refresh').addEventListener('click', () => {
+      window.location.reload();
+    });
   </script>
 
   <!-- Service Worker registration -->
