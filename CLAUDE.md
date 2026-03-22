@@ -24,7 +24,28 @@ All three app files are wrapped in IIFEs to avoid global namespace collisions. T
 - **SheetJS** (`XLSX`) — reading all Excel formats (.xlsx, .xls, .xlsm, .xlsb, .csv)
 - **ExcelJS** — writing styled Excel output (POC and Contractor apps; TSR app uses SheetJS `writeFile`)
 
-The tab system in `index.html` is vanilla JS — clicking a tab toggles `.active` and `display` on `.tab-panel` divs.
+## Layout (`index.html` + `styles.css`)
+
+The app uses a **sidebar + main content** layout (not a top header + tab bar):
+
+- **`.sidebar`** (left, fixed width 230px) — `#0070C0` blue gradient background. Contains:
+  - `.sidebar-header` — logo (`LMP Big Logo.jpg`) + brand title/subtitle
+  - `.sidebar-nav` — three `.nav-item` tab buttons (one per app)
+  - `.sidebar-footer` — **New Analysis** button (`#btn-refresh`) at the bottom; clicking it calls `window.location.reload()` to clear all state
+- **`.main-wrapper`** (right, flex:1) — ledger-paper background (`#eaf0f7`). Contains:
+  - `.content-header` — white bar showing the current tab's page title (`#page-title`), updated by the tab-switching JS
+  - Three `.tab-panel` divs (one per app)
+  - `<footer>` — navy blue (`#1a3a5c`) with white text
+
+**Color scheme:**
+- Sidebar: `linear-gradient(180deg, #005a9e, #0070C0, #0082d8)`
+- Active nav item: `rgba(255,255,255,0.25)` background + `#1a3a5c` left border
+- Gold accent stripe on right edge of sidebar: `#c8972a` / `#e8b84b`
+- Body background: `#eaf0f7` with repeating ledger-paper grid lines
+- Cards: white with `#1a3a5c` top border
+- Footer background: `#1a3a5c`
+
+The tab-switching JS updates both the `.nav-item` active state and the `#page-title` text. At ≤768px the sidebar collapses to a 60px icon-only strip.
 
 ## POC App Data Flow (`poc-app.js`)
 
@@ -41,18 +62,46 @@ The tab system in `index.html` is vanilla JS — clicking a tab toggles `.active
 
 Requires **two** files loaded simultaneously before analysis runs:
 
-- **Tracking file (.xlsm)** — sheet `Invoicing Track`, header at row index 3 (row 4), data from row index 4. Key hardcoded column positions used alongside header-name detection: col 28 = FAC Date, col 30 = Acceptance Week, col 32 = PO Status, col 18 = Line Item, col 11 = Distance band, col 12 = Absolute Quantity.
-- **TSR file (.xlsb)** — sheet `Request Form - VF`, header row found by scanning col G for "item description". Key column positions: col 6 = Item Description, col 12 = Unit Price, col 50 = Remaining Qty.
+- **Tracking file (.xlsm)** — sheet `Invoicing Track`, header at row index 3 (row 4), data from row index 4.
+- **TSR file (.xlsb)** — sheet `Request Form - VF`, header row found by scanning any column for "item description".
 
-**Analysis logic:**
-1. Groups tracking rows by `(JobCode, LogicalSiteId)` combo key, skipping rows where col 32 (PO Status) is filled
-2. Only combos that have a FAC Date (col 28) are "active"
-3. Quantities are multiplied by `distanceMultipliers` based on the distance band in col 11
+### Column Detection — Tracking File
+
+**All columns are detected purely by header name (first match, left-to-right). No hardcoded column numbers are used as defaults.** Required columns — a clear error listing missing columns is thrown if any are absent:
+
+| Column | Header pattern matched |
+|---|---|
+| Job Code | `includes('job code')` |
+| Logical Site ID | `includes('logical site')` |
+| Line Item | `=== 'line item'` or `=== 'line items'` (exact) |
+| FAC Date | `includes('fac date')` or `=== 'fac'` |
+| Acceptance Week | `includes('acceptance week')` |
+| New Total | `includes('new total')` |
+| Absolute Quantity | `includes('absolute')` + `includes('qty')` or `includes('quant')` |
+
+Optional columns (export only, no error if absent): Distance, PO Status, Acceptance Status, VF Task Owner, Vendor, Site Option, Facing, Task Date, PRQ, Certificate, ID#.
+
+### Column Detection — TSR File
+
+Columns are also detected from the TSR header row after it is located. Fallbacks to original hardcoded positions if the header is not found:
+
+| Column | Header pattern | Fallback |
+|---|---|---|
+| Item Description | `includes('item description')` | col 6 |
+| Unit Price | `includes('unit price')` | col 12 |
+| Remaining Qty | `includes('remaining')` (excluding 'after') | col 50 |
+
+### Analysis Logic
+
+1. Groups tracking rows by `(JobCode, LogicalSiteId)` combo key, skipping rows where PO Status is filled
+2. Only combos that have at least one FAC Date are "active"
+3. Actual quantity = `Absolute Quantity × distanceMultiplier` (based on distance band column)
 4. Combos are classified into three buckets:
-   - **Can Submit** — all rows in combo have FAC Date + Acceptance Week, AND their quantities fit within TSR remaining (greedy first-fit ordered by first Excel row number)
+   - **Can Submit** — all rows in combo have FAC Date + Acceptance Week, AND their actual quantities fit within TSR remaining (greedy first-fit ordered by first Excel row number). Requires `liQtyMap.size > 0` — combos with no readable line items are never auto-passed.
    - **Pending** — not all rows have FAC Date or Acceptance Week
    - **Need PO** — all rows ready but TSR has insufficient remaining quantity
-5. Financial totals use `newTotal` column (col index from `newTotalColIndex`), not computed from qty × price
+5. Financial totals use `newTotal` column, not computed from qty × price
+6. Comparison: `actualQty` (with distance multiplier applied) is compared against TSR remaining qty
 
 ## Contractor App Data Flow (`contractor-app.js`)
 
@@ -71,14 +120,10 @@ Reads the same **Tracking file (.xlsm)** used by the TSR tab (sheet `Invoicing T
   - **Draft sheet** — cols B–F: Job Code, Site ID, Facing, Line Item, Amount. Title cell E3:F4 (merged, blue, blank for manual draft number entry). Alternating row colours: first row of each Job Code group = peach (`#F8CBAD`), rest = white. Total row = green (`#00FF00`).
   - **Deduction sheet** — cols B–E only: Job Code, Site ID, Facing, Deduction Amount (empty, for manual entry). No Price/Amount column.
 
-## Header Layout
-
-Logo (`LMP Big Logo.jpg`) sits on the **left** of the header, text on the right. Uses `box-sizing: content-box` on `.header-logo` so `height` refers to the image itself and padding is additive (prevents the rounded-corner container from shrinking the visible logo).
-
 ## Icons
 
 `icon.svg` is the source design. `icon-192.png` and `icon-512.png` are generated from it using a PowerShell + `System.Drawing` script (no build tooling). To regenerate PNGs after editing the SVG, recreate the drawing commands in PowerShell — the SVG cannot be auto-converted without an external tool like Inkscape.
 
 ## Service Worker Cache
 
-When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v1` → `lmp-invoicing-v2`). Without this, installed PWA users will continue running stale files.
+When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v2` → `lmp-invoicing-v3`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v3`.
