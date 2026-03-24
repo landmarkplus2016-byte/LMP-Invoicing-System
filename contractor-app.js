@@ -153,7 +153,7 @@ function analyzeContractors() {
       siteId:   cSite     >= 0 ? String(row[cSite]     ?? '').trim() : '',
       facing:   cFacing   >= 0 ? String(row[cFacing]   ?? '').trim() : '',
       lineItem: cLineItem >= 0 ? String(row[cLineItem] ?? '').trim() : '',
-      price:    cPrice    >= 0 ? (row[cPrice] ?? '')                  : '',
+      price:    cPrice    >= 0 ? toContractorAmount(row[cPrice])      : '',
     });
   }
 
@@ -232,6 +232,12 @@ function fmtPrice(val) {
     : parseFloat(String(val).replace(/[^0-9.-]/g, ''));
   if (isNaN(n)) return String(val);
   return 'EGP ' + n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+
+function toContractorAmount(raw) {
+  const n = typeof raw === 'number' ? raw
+    : parseFloat(String(raw ?? '').replace(/[^0-9.-]/g, ''));
+  return isNaN(n) ? '' : n * 0.7;
 }
 
 function sumPrices(rows) {
