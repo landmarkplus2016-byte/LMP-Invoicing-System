@@ -237,7 +237,7 @@ function fmtPrice(val) {
 function toContractorAmount(raw) {
   const n = typeof raw === 'number' ? raw
     : parseFloat(String(raw ?? '').replace(/[^0-9.-]/g, ''));
-  return isNaN(n) ? '' : n * 0.7;
+  return isNaN(n) ? '' : Math.round(n * 0.7 * 100) / 100;
 }
 
 function sumPrices(rows) {

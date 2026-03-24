@@ -622,6 +622,11 @@ footer p + p {
   border-color: #b3d4f5;
 }
 
+.fin-stat-red {
+  background: #fdecea;
+  border-color: #e53935;
+}
+
 .poc-stat-label {
   display: block;
   font-size: 0.78rem;
@@ -1072,5 +1077,64 @@ footer p + p {
 
   .poc-stats-row {
     flex-direction: column;
+  }
+}
+
+/* =============================================================================
+   Finance Sheet Tab
+   ============================================================================= */
+.fin-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-end;
+  margin-bottom: 0.25rem;
+}
+
+.fin-filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 200px;
+  flex: 1;
+}
+
+.fin-filter-group label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #1a3a5c;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.fin-filter-group select {
+  padding: 0.45rem 0.75rem;
+  border: 1.5px solid #c8d6e8;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 0.95rem;
+  color: #1a1a2e;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.fin-filter-group select:focus {
+  border-color: #0070C0;
+}
+
+.fin-filter-clear {
+  justify-content: flex-end;
+  min-width: unset;
+  flex: 0;
+}
+
+.fin-stats-row {
+  margin-top: 1.25rem;
+}
+
+@media (max-width: 600px) {
+  .fin-filter-group {
+    min-width: 100%;
   }
 }

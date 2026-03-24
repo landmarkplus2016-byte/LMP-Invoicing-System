@@ -164,11 +164,7 @@ function processExcel(fileData) {
         const rawTotal = parseFloat(String(cell(row, colMap.totalAmount) ?? '').replace(/,/g, '')) || 0;
         out[label] = rawTotal / 2;
       } else {
-        let v = cell(row, colMap[key]);
-        if (v instanceof Date) {
-          v = formatDate(v);
-        }
-        out[label] = v;
+        out[label] = cell(row, colMap[key]);
       }
     }
     return out;
@@ -290,6 +286,8 @@ async function exportToExcel(result, originalFileName) {
       c.value  = val;
       if (FINANCIAL_LABELS.has(h) && typeof val === 'number') {
         c.numFmt = EGP_FMT;
+      } else if (val instanceof Date) {
+        c.numFmt = 'dd-mmm-yy';
       }
       c.border = ALL_BORDERS;
     });

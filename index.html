@@ -50,6 +50,10 @@
           <span class="nav-icon">&#128209;</span>
           <span class="nav-label">Contractor Invoices</span>
         </button>
+        <button class="nav-item" role="tab" aria-selected="false" data-tab="finance">
+          <span class="nav-icon">&#128200;</span>
+          <span class="nav-label">Finance Sheet</span>
+        </button>
       </nav>
 
       <div class="sidebar-footer">
@@ -264,6 +268,80 @@
         </main>
       </div>
 
+      <!-- ================================================================
+           TAB: Finance Sheet
+           ================================================================ -->
+      <div id="panel-finance" class="tab-panel" style="display:none">
+        <main class="contractor-main">
+
+          <div id="fin-error" role="alert" class="con-error-msg" style="display:none"></div>
+
+          <!-- File Selection -->
+          <section class="card">
+            <h2>Upload Tracking File</h2>
+            <div style="display:flex; justify-content:center; margin-top:0.5rem;">
+              <div id="card-fin-track" class="file-card" style="width:100%; max-width:420px;">
+                <div class="file-icon">&#128193;</div>
+                <div class="file-label">Task Tracking File (.xlsm)</div>
+                <button id="btn-pick-fin-track" class="btn-secondary">Browse File</button>
+                <input type="file" id="fin-track-input" accept=".xlsm,.xlsx" style="display:none" />
+                <span id="fin-track-filename" class="filename-display">No file selected</span>
+                <div id="fin-track-progress" class="file-progress"></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Loading -->
+          <div id="fin-loading" style="display:none" class="con-loading-wrap">
+            <div class="spinner"></div>
+            <p>Reading tracking data&#8230;</p>
+          </div>
+
+          <!-- Results -->
+          <section id="fin-results" class="card" style="display:none">
+            <h2>Filters</h2>
+            <div class="fin-filters">
+              <div class="fin-filter-group">
+                <label for="fin-filter-vf">VF Invoice #</label>
+                <select id="fin-filter-vf"><option value="">-- All --</option></select>
+              </div>
+              <div class="fin-filter-group">
+                <label for="fin-filter-con">Contractor Invoice #</label>
+                <select id="fin-filter-con"><option value="">-- All --</option></select>
+              </div>
+              <div class="fin-filter-group fin-filter-clear">
+                <button id="btn-fin-clear-filters" class="btn-secondary">Clear Filters</button>
+              </div>
+            </div>
+
+            <div class="poc-stats-row fin-stats-row">
+              <div class="poc-stat-box fin-stat-red">
+                <span class="poc-stat-label">Rows</span>
+                <span class="poc-stat-value" id="fin-stat-rows">0</span>
+              </div>
+              <div class="poc-stat-box poc-stat-migration">
+                <span class="poc-stat-label">New Total Price</span>
+                <span class="poc-stat-amount" id="fin-stat-total">EGP 0</span>
+              </div>
+              <div class="poc-stat-box poc-stat-installation">
+                <span class="poc-stat-label">LMP Portion</span>
+                <span class="poc-stat-amount" id="fin-stat-lmp">EGP 0</span>
+              </div>
+              <div class="poc-stat-box poc-stat-total">
+                <span class="poc-stat-label">Contractor Portion</span>
+                <span class="poc-stat-amount poc-stat-amount-total" id="fin-stat-con2">EGP 0</span>
+              </div>
+            </div>
+
+            <div style="margin-top:1.25rem;">
+              <button id="btn-export-fin" class="btn-primary" disabled>&#8659; Export to Excel</button>
+              <p id="fin-export-status" class="con-export-status"></p>
+            </div>
+          </section>
+
+        </main>
+      </div>
+
       <!-- Unified footer -->
       <footer>
         <p>LMP Invoicing System &mdash; Landmark Plus Telecom Department</p>
@@ -277,6 +355,7 @@
   <script src="poc-app.js"></script>
   <script src="tsr-app.js"></script>
   <script src="contractor-app.js"></script>
+  <script src="finance-app.js"></script>
 
   <!-- Tab switching logic -->
   <script>
@@ -288,7 +367,8 @@
       const tabLabels = {
         poc:        'POC Invoice Prep',
         tsr:        'TSR Submission Checker',
-        contractor: 'Contractor Invoices'
+        contractor: 'Contractor Invoices',
+        finance:    'Finance Sheet'
       };
 
       navItems.forEach(btn => {
