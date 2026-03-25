@@ -425,6 +425,251 @@ function esc(s) {
 }
 
 // ===========================================================================
+// POC INVOICES SUB-TAB
+// Reads POC tracking, generates one contractor Draft+Deduction file per
+// contractor for the selected VF Invoice #.
+// ===========================================================================
+
+let _wbPocCon      = null;
+let _allRowsPocCon = null;
+
+document.getElementById('btn-pick-con-poc-track').addEventListener('click', () => {
+  document.getElementById('con-poc-track-input').click();
+});
+
+document.getElementById('con-poc-track-input').addEventListener('change', async (e) => {
+  clearConPocError();
+  const file = e.target.files[0];
+  if (!file) return;
+  conPocFileProgress(true);
+  try {
+    const buf = await file.arrayBuffer();
+    _wbPocCon = XLSX.read(buf, { type: 'array', cellDates: true });
+    document.getElementById('con-poc-track-filename').textContent = file.name;
+    document.getElementById('card-con-poc-track').classList.add('loaded');
+    conPocFileProgress(false);
+    runPocConAnalysis();
+  } catch (err) {
+    conPocFileProgress(false);
+    showConPocError('Failed to open file: ' + err.message);
+  }
+});
+
+function runPocConAnalysis() {
+  clearConPocError();
+  conPocLoading(true);
+  document.getElementById('con-poc-results').style.display = 'none';
+  setTimeout(() => {
+    try {
+      _allRowsPocCon = extractPocConRows();
+      populatePocConFilter(_allRowsPocCon);
+      renderPocConSummary(getPocConFilteredGroups());
+      conPocLoading(false);
+      document.getElementById('con-poc-results').style.display = 'block';
+      document.getElementById('con-poc-results').scrollIntoView({ behavior: 'smooth' });
+    } catch (err) {
+      conPocLoading(false);
+      showConPocError(err.message || 'Unexpected error during analysis.');
+    }
+  }, 50);
+}
+
+function extractPocConRows() {
+  const sheetName = _wbPocCon.SheetNames.find(n => n.trim() === 'POC3 Tracking')
+                 || _wbPocCon.SheetNames[0];
+  const sheet = _wbPocCon.Sheets[sheetName];
+  if (!sheet) throw new Error('No sheet found in the file.');
+
+  const allRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
+
+  let headerIdx = -1;
+  for (let i = 0; i < Math.min(30, allRows.length); i++) {
+    if (allRows[i].some(c => String(c ?? '').trim().toLowerCase() === 'inst contractor')) {
+      headerIdx = i; break;
+    }
+  }
+  if (headerIdx < 0) throw new Error('Cannot find header row — expected a cell with "INST Contractor".');
+
+  const header   = allRows[headerIdx];
+  const dataRows = allRows.slice(headerIdx + 1).filter(r => r.some(c => c != null && c !== ''));
+
+  const cm = {};
+  header.forEach((h, i) => {
+    const t = String(h ?? '').trim().toLowerCase();
+    if (cm.jobCode  === undefined && t === 'job code')                                                             cm.jobCode  = i;
+    if (cm.siteId   === undefined && t === 'site id')                                                              cm.siteId   = i;
+    if (cm.lineItem === undefined && t === 'line item')                                                            cm.lineItem = i;
+    if (cm.total    === undefined && t.includes('total amount'))                                                   cm.total    = i;
+    if (cm.instCon  === undefined && t.includes('inst') && t.includes('contractor') && !t.includes('invoice'))    cm.instCon  = i;
+    if (cm.lmpIns   === undefined && t.includes('lmp') && t.includes('ins'))                                      cm.lmpIns   = i;
+    if (cm.conIns   === undefined && t.includes('contractor') && t.includes('portion') && t.includes('ins'))      cm.conIns   = i;
+    if (cm.invIns   === undefined && (t.includes('invoice') || t.includes('invoice#')) && t.includes('ins') && !t.includes('contractor'))
+                                                                                                                   cm.invIns   = i;
+    if (cm.migrCon  === undefined && t.includes('migr') && t.includes('contractor') && !t.includes('invoice'))    cm.migrCon  = i;
+    if (cm.lmpMig   === undefined && t.includes('lmp') && t.includes('mig'))                                      cm.lmpMig   = i;
+    if (cm.conMig   === undefined && t.includes('contractor') && t.includes('portion') && t.includes('mig'))      cm.conMig   = i;
+    if (cm.invMig   === undefined && (t.includes('invoice') || t.includes('invoice#')) && t.includes('mig') && !t.includes('contractor'))
+                                                                                                                   cm.invMig   = i;
+  });
+
+  const required = {
+    jobCode: 'Job Code', siteId: 'Site ID', lineItem: 'Line Item', total: 'Total Amount',
+    instCon: 'INST Contractor', lmpIns: 'LMP Portion ins', invIns: 'Invoice# ins',
+    migrCon: 'MIGR Contractor', lmpMig: 'LMP Portion mig', invMig: 'Invoice# mig',
+  };
+  const missing = Object.entries(required).filter(([k]) => cm[k] === undefined).map(([, l]) => l);
+  if (missing.length > 0) throw new Error('Columns not found: ' + missing.join(', '));
+
+  function gv(row, key) {
+    const i = cm[key];
+    return (i !== undefined && i < row.length) ? (row[i] ?? '') : '';
+  }
+  function toNum(v) {
+    if (typeof v === 'number') return v;
+    const n = parseFloat(String(v).replace(/[^0-9.-]/g, ''));
+    return isNaN(n) ? 0 : n;
+  }
+
+  const rows = [];
+  for (const row of dataRows) {
+    const halfTotal = toNum(gv(row, 'total')) / 2;
+    const jobCode   = String(gv(row, 'jobCode')).trim();
+    const siteId    = String(gv(row, 'siteId')).trim();
+    const lineItem  = String(gv(row, 'lineItem')).trim();
+    if (!jobCode && !siteId) continue;
+
+    // Installation row
+    const instCon = normalizeContractor(gv(row, 'instCon'));
+    if (instCon && instCon !== 'In-House') {
+      rows.push({
+        contractor: instCon,
+        jobCode, siteId, facing: '', lineItem,
+        price:     toNum(gv(row, 'conIns')),
+        lmp:       toNum(gv(row, 'lmpIns')),
+        newTotal:  halfTotal,
+        vfInvoice: String(gv(row, 'invIns')).trim(),
+      });
+    }
+
+    // Migration row
+    const migrCon = normalizeContractor(gv(row, 'migrCon'));
+    if (migrCon && migrCon !== 'In-House') {
+      rows.push({
+        contractor: migrCon,
+        jobCode, siteId, facing: '', lineItem,
+        price:     toNum(gv(row, 'conMig')),
+        lmp:       toNum(gv(row, 'lmpMig')),
+        newTotal:  halfTotal,
+        vfInvoice: String(gv(row, 'invMig')).trim(),
+      });
+    }
+  }
+
+  if (rows.length === 0) throw new Error('No contractor rows found in the POC tracking file.');
+  return rows;
+}
+
+function populatePocConFilter(rows) {
+  const vfSet = new Set();
+  rows.forEach(r => { if (r.vfInvoice) vfSet.add(r.vfInvoice); });
+  document.getElementById('con-poc-filter-vf').innerHTML =
+    '<option value="">-- All --</option>' +
+    [...vfSet].sort().map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+}
+
+document.getElementById('con-poc-filter-vf').addEventListener('change', onPocConFilterChange);
+document.getElementById('btn-con-poc-clear-filter').addEventListener('click', () => {
+  document.getElementById('con-poc-filter-vf').value = '';
+  onPocConFilterChange();
+});
+
+function onPocConFilterChange() {
+  if (!_allRowsPocCon) return;
+  renderPocConSummary(getPocConFilteredGroups());
+}
+
+function getPocConFilteredGroups() {
+  if (!_allRowsPocCon) return new Map();
+  const vf = document.getElementById('con-poc-filter-vf').value.trim();
+  const filtered = _allRowsPocCon.filter(r => !vf || r.vfInvoice === vf);
+  const groups = new Map();
+  for (const row of filtered) {
+    if (!groups.has(row.contractor)) groups.set(row.contractor, []);
+    groups.get(row.contractor).push(row);
+  }
+  return groups;
+}
+
+function renderPocConSummary(groups) {
+  let html = '', grandCon = 0, grandLmp = 0, grandTotal = 0, totalRows = 0;
+  for (const [name, rows] of groups) {
+    const amt  = sumPrices(rows);
+    grandCon   += amt;
+    grandLmp   += rows.reduce((s, r) => s + (typeof r.lmp     === 'number' ? r.lmp     : 0), 0);
+    grandTotal += rows.reduce((s, r) => s + (typeof r.newTotal === 'number' ? r.newTotal : 0), 0);
+    totalRows  += rows.length;
+    html += `<tr><td>${esc(name)}</td><td class="num">${fmtPrice(amt)}</td></tr>`;
+  }
+  if (html) {
+    html += `<tr class="totals-row"><td><strong>Total</strong></td><td class="num"><strong>${fmtPrice(grandCon)}</strong></td></tr>`;
+  }
+  document.getElementById('con-poc-summary-tbody').innerHTML = html;
+  document.getElementById('con-poc-stat-rows').textContent   = totalRows.toLocaleString();
+  document.getElementById('con-poc-stat-total').textContent  = fmtPrice(grandTotal);
+  document.getElementById('con-poc-stat-lmp').textContent    = fmtPrice(grandLmp);
+  document.getElementById('con-poc-stat-con').textContent    = fmtPrice(grandCon);
+  const statusEl = document.getElementById('con-poc-export-status');
+  statusEl.textContent = '';
+  statusEl.className   = '';
+  document.getElementById('btn-export-con-poc').disabled = groups.size === 0;
+}
+
+document.getElementById('btn-export-con-poc').addEventListener('click', async () => {
+  const groups = getPocConFilteredGroups();
+  if (groups.size === 0) return;
+  const btn      = document.getElementById('btn-export-con-poc');
+  const statusEl = document.getElementById('con-poc-export-status');
+  btn.disabled         = true;
+  statusEl.textContent = 'Generating files…';
+  statusEl.className   = '';
+  try {
+    let done = 0;
+    for (const [name, rows] of groups) {
+      await buildAndDownload(name, rows);
+      done++;
+      statusEl.textContent = `Exporting… ${done} / ${groups.size}`;
+      await new Promise(r => setTimeout(r, 500));
+    }
+    statusEl.textContent = `\u2705 Done — ${done} file(s) downloaded.`;
+    statusEl.className   = 'export-status-success';
+  } catch (err) {
+    statusEl.textContent = `\u274c Export failed: ${err.message}`;
+    statusEl.className   = 'export-status-error';
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+function showConPocError(msg) {
+  const el = document.getElementById('con-poc-error');
+  el.textContent   = msg;
+  el.style.display = 'block';
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+function clearConPocError() {
+  const el = document.getElementById('con-poc-error');
+  el.textContent   = '';
+  el.style.display = 'none';
+}
+function conPocLoading(on) {
+  document.getElementById('con-poc-loading').style.display = on ? 'flex' : 'none';
+}
+function conPocFileProgress(on) {
+  const el = document.getElementById('con-poc-track-progress');
+  if (el) el.style.display = on ? 'block' : 'none';
+}
+
+// ===========================================================================
 // PRE-2026 SECTION — filter by VF Invoice #, export contractor files
 // ===========================================================================
 

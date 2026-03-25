@@ -229,6 +229,9 @@
             <button class="con-subtab" data-subtab="con-subpanel-pre">
               &#128194; Pre-2026 Tasks
             </button>
+            <button class="con-subtab" data-subtab="con-subpanel-poc">
+              &#128196; POC Invoices
+            </button>
           </div>
 
           <!-- ── SUB-PANEL: 2026 Tasks ──────────────────────────────── -->
@@ -353,6 +356,84 @@
             </section>
 
           </div><!-- /#con-subpanel-pre -->
+
+          <!-- ── SUB-PANEL: POC Invoices ───────────────────────────── -->
+          <div id="con-subpanel-poc" class="con-subpanel" style="display:none">
+
+            <div id="con-poc-error" role="alert" class="con-error-msg" style="display:none"></div>
+
+            <!-- File Selection -->
+            <section class="card">
+              <h2>Upload POC Tracking File</h2>
+              <div style="display:flex; justify-content:center; margin-top:0.5rem;">
+                <div id="card-con-poc-track" class="file-card" style="width:100%; max-width:420px;">
+                  <div class="file-icon">&#128193;</div>
+                  <div class="file-label">POC Tracking File (.xlsx / .xlsm)</div>
+                  <button id="btn-pick-con-poc-track" class="btn-secondary">Browse File</button>
+                  <input type="file" id="con-poc-track-input" accept=".xlsx,.xlsm,.xls,.xlsb" style="display:none" />
+                  <span id="con-poc-track-filename" class="filename-display">No file selected</span>
+                  <div id="con-poc-track-progress" class="file-progress"></div>
+                </div>
+              </div>
+            </section>
+
+            <!-- Loading -->
+            <div id="con-poc-loading" style="display:none" class="con-loading-wrap">
+              <div class="spinner"></div>
+              <p>Reading POC tracking data&#8230;</p>
+            </div>
+
+            <!-- Results -->
+            <section id="con-poc-results" class="card" style="display:none">
+              <h2>Filters</h2>
+              <div class="fin-filters">
+                <div class="fin-filter-group">
+                  <label for="con-poc-filter-vf">VF Invoice #</label>
+                  <select id="con-poc-filter-vf"><option value="">-- All --</option></select>
+                </div>
+                <div class="fin-filter-group fin-filter-clear">
+                  <button id="btn-con-poc-clear-filter" class="btn-secondary">Clear Filter</button>
+                </div>
+              </div>
+
+              <div class="poc-stats-row fin-stats-row">
+                <div class="poc-stat-box fin-stat-red">
+                  <span class="poc-stat-label">Rows</span>
+                  <span class="poc-stat-value" id="con-poc-stat-rows">0</span>
+                </div>
+                <div class="poc-stat-box poc-stat-migration">
+                  <span class="poc-stat-label">New Total Price</span>
+                  <span class="poc-stat-amount" id="con-poc-stat-total">EGP 0</span>
+                </div>
+                <div class="poc-stat-box poc-stat-installation">
+                  <span class="poc-stat-label">LMP Portion</span>
+                  <span class="poc-stat-amount" id="con-poc-stat-lmp">EGP 0</span>
+                </div>
+                <div class="poc-stat-box poc-stat-total">
+                  <span class="poc-stat-label">Contractor Portion</span>
+                  <span class="poc-stat-amount poc-stat-amount-total" id="con-poc-stat-con">EGP 0</span>
+                </div>
+              </div>
+
+              <p class="card-hint" style="margin-top:1rem;">One Excel file per contractor — each file contains a <em>Draft</em> sheet and a <em>Deduction</em> sheet.</p>
+              <div class="table-wrapper">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Contractor</th>
+                      <th style="width:160px; text-align:right;">Invoice Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody id="con-poc-summary-tbody"></tbody>
+                </table>
+              </div>
+              <div style="margin-top:1.25rem;">
+                <button id="btn-export-con-poc" class="btn-primary" disabled>&#8659; Export All Files</button>
+                <p id="con-poc-export-status" class="con-export-status"></p>
+              </div>
+            </section>
+
+          </div><!-- /#con-subpanel-poc -->
 
         </main>
       </div>
