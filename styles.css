@@ -118,7 +118,7 @@ body {
   background: transparent;
   color: rgba(255, 255, 255, 0.82);
   border: none;
-  border-left: 3px solid transparent;
+  border-left: 4px solid transparent;
   padding: 0.8rem 1.1rem;
   font-size: 0.875rem;
   font-weight: 500;
@@ -136,7 +136,7 @@ body {
 .nav-item.active {
   background: rgba(255, 255, 255, 0.25);
   color: #fff;
-  border-left-color: #1a3a5c;
+  border-left-color: #ffffff;
   font-weight: 700;
 }
 
@@ -1005,9 +1005,10 @@ footer p + p {
   border-top: 3px solid #1a3a5c;
 }
 
-.con-subtab {
+.con-subtab,
+.fin-subtab {
   flex: 1;
-  padding: 0.6rem 1.25rem;
+  padding: 0.85rem 1.25rem;
   border: none;
   border-radius: 7px;
   font-size: 0.92rem;
@@ -1019,13 +1020,15 @@ footer p + p {
   letter-spacing: 0.01em;
 }
 
-.con-subtab.active {
+.con-subtab.active,
+.fin-subtab.active {
   background: linear-gradient(135deg, #1a3a5c, #0070C0);
   color: #fff;
   box-shadow: 0 2px 8px rgba(0, 112, 192, 0.35);
 }
 
-.con-subtab:not(.active):hover {
+.con-subtab:not(.active):hover,
+.fin-subtab:not(.active):hover {
   background: #eef3f9;
   color: #1a3a5c;
 }

@@ -363,70 +363,155 @@
       <div id="panel-finance" class="tab-panel" style="display:none">
         <main class="contractor-main">
 
-          <div id="fin-error" role="alert" class="con-error-msg" style="display:none"></div>
-
-          <!-- File Selection -->
-          <section class="card">
-            <h2>Upload Tracking File</h2>
-            <div style="display:flex; justify-content:center; margin-top:0.5rem;">
-              <div id="card-fin-track" class="file-card" style="width:100%; max-width:420px;">
-                <div class="file-icon">&#128193;</div>
-                <div class="file-label">Task Tracking File (.xlsm)</div>
-                <button id="btn-pick-fin-track" class="btn-secondary">Browse File</button>
-                <input type="file" id="fin-track-input" accept=".xlsm,.xlsx" style="display:none" />
-                <span id="fin-track-filename" class="filename-display">No file selected</span>
-                <div id="fin-track-progress" class="file-progress"></div>
-              </div>
-            </div>
-          </section>
-
-          <!-- Loading -->
-          <div id="fin-loading" style="display:none" class="con-loading-wrap">
-            <div class="spinner"></div>
-            <p>Reading tracking data&#8230;</p>
+          <!-- Sub-tab bar -->
+          <div class="con-subtab-bar">
+            <button class="fin-subtab active" data-subtab="fin-subpanel-inv">
+              &#128200; TX-RF Track
+            </button>
+            <button class="fin-subtab" data-subtab="fin-subpanel-poc">
+              &#128196; POC Tracking
+            </button>
           </div>
 
-          <!-- Results -->
-          <section id="fin-results" class="card" style="display:none">
-            <h2>Filters</h2>
-            <div class="fin-filters">
-              <div class="fin-filter-group">
-                <label for="fin-filter-vf">VF Invoice #</label>
-                <select id="fin-filter-vf"><option value="">-- All --</option></select>
+          <!-- ── SUB-PANEL: Invoicing Track ─────────────────────────── -->
+          <div id="fin-subpanel-inv" class="con-subpanel">
+
+            <div id="fin-error" role="alert" class="con-error-msg" style="display:none"></div>
+
+            <!-- File Selection -->
+            <section class="card">
+              <h2>Upload Tracking File</h2>
+              <div style="display:flex; justify-content:center; margin-top:0.5rem;">
+                <div id="card-fin-track" class="file-card" style="width:100%; max-width:420px;">
+                  <div class="file-icon">&#128193;</div>
+                  <div class="file-label">Task Tracking File (.xlsm)</div>
+                  <button id="btn-pick-fin-track" class="btn-secondary">Browse File</button>
+                  <input type="file" id="fin-track-input" accept=".xlsm,.xlsx" style="display:none" />
+                  <span id="fin-track-filename" class="filename-display">No file selected</span>
+                  <div id="fin-track-progress" class="file-progress"></div>
+                </div>
               </div>
-              <div class="fin-filter-group">
-                <label for="fin-filter-con">Contractor Invoice #</label>
-                <select id="fin-filter-con"><option value="">-- All --</option></select>
-              </div>
-              <div class="fin-filter-group fin-filter-clear">
-                <button id="btn-fin-clear-filters" class="btn-secondary">Clear Filters</button>
-              </div>
+            </section>
+
+            <!-- Loading -->
+            <div id="fin-loading" style="display:none" class="con-loading-wrap">
+              <div class="spinner"></div>
+              <p>Reading tracking data&#8230;</p>
             </div>
 
-            <div class="poc-stats-row fin-stats-row">
-              <div class="poc-stat-box fin-stat-red">
-                <span class="poc-stat-label">Rows</span>
-                <span class="poc-stat-value" id="fin-stat-rows">0</span>
+            <!-- Results -->
+            <section id="fin-results" class="card" style="display:none">
+              <h2>Filters</h2>
+              <div class="fin-filters">
+                <div class="fin-filter-group">
+                  <label for="fin-filter-vf">VF Invoice #</label>
+                  <select id="fin-filter-vf"><option value="">-- All --</option></select>
+                </div>
+                <div class="fin-filter-group">
+                  <label for="fin-filter-con">Contractor Invoice #</label>
+                  <select id="fin-filter-con"><option value="">-- All --</option></select>
+                </div>
+                <div class="fin-filter-group fin-filter-clear">
+                  <button id="btn-fin-clear-filters" class="btn-secondary">Clear Filters</button>
+                </div>
               </div>
-              <div class="poc-stat-box poc-stat-migration">
-                <span class="poc-stat-label">New Total Price</span>
-                <span class="poc-stat-amount" id="fin-stat-total">EGP 0</span>
+
+              <div class="poc-stats-row fin-stats-row">
+                <div class="poc-stat-box fin-stat-red">
+                  <span class="poc-stat-label">Rows</span>
+                  <span class="poc-stat-value" id="fin-stat-rows">0</span>
+                </div>
+                <div class="poc-stat-box poc-stat-migration">
+                  <span class="poc-stat-label">New Total Price</span>
+                  <span class="poc-stat-amount" id="fin-stat-total">EGP 0</span>
+                </div>
+                <div class="poc-stat-box poc-stat-installation">
+                  <span class="poc-stat-label">LMP Portion</span>
+                  <span class="poc-stat-amount" id="fin-stat-lmp">EGP 0</span>
+                </div>
+                <div class="poc-stat-box poc-stat-total">
+                  <span class="poc-stat-label">Contractor Portion</span>
+                  <span class="poc-stat-amount poc-stat-amount-total" id="fin-stat-con2">EGP 0</span>
+                </div>
               </div>
-              <div class="poc-stat-box poc-stat-installation">
-                <span class="poc-stat-label">LMP Portion</span>
-                <span class="poc-stat-amount" id="fin-stat-lmp">EGP 0</span>
+
+              <div style="margin-top:1.25rem;">
+                <button id="btn-export-fin" class="btn-primary" disabled>&#8659; Export to Excel</button>
+                <p id="fin-export-status" class="con-export-status"></p>
               </div>
-              <div class="poc-stat-box poc-stat-total">
-                <span class="poc-stat-label">Contractor Portion</span>
-                <span class="poc-stat-amount poc-stat-amount-total" id="fin-stat-con2">EGP 0</span>
+            </section>
+
+          </div><!-- /#fin-subpanel-inv -->
+
+          <!-- ── SUB-PANEL: POC Tracking ────────────────────────────── -->
+          <div id="fin-subpanel-poc" class="con-subpanel" style="display:none">
+
+            <div id="poc-fin-error" role="alert" class="con-error-msg" style="display:none"></div>
+
+            <!-- File Selection -->
+            <section class="card">
+              <h2>Upload POC Tracking File</h2>
+              <div style="display:flex; justify-content:center; margin-top:0.5rem;">
+                <div id="card-poc-track" class="file-card" style="width:100%; max-width:420px;">
+                  <div class="file-icon">&#128193;</div>
+                  <div class="file-label">POC Tracking File (.xlsx / .xlsm)</div>
+                  <button id="btn-pick-poc-track" class="btn-secondary">Browse File</button>
+                  <input type="file" id="poc-track-input" accept=".xlsx,.xlsm,.xls,.xlsb" style="display:none" />
+                  <span id="poc-track-filename" class="filename-display">No file selected</span>
+                  <div id="poc-track-progress" class="file-progress"></div>
+                </div>
               </div>
+            </section>
+
+            <!-- Loading -->
+            <div id="poc-fin-loading" style="display:none" class="con-loading-wrap">
+              <div class="spinner"></div>
+              <p>Reading POC tracking data&#8230;</p>
             </div>
 
-            <div style="margin-top:1.25rem;">
-              <button id="btn-export-fin" class="btn-primary" disabled>&#8659; Export to Excel</button>
-              <p id="fin-export-status" class="con-export-status"></p>
-            </div>
-          </section>
+            <!-- Results -->
+            <section id="poc-fin-results" class="card" style="display:none">
+              <h2>Filters</h2>
+              <div class="fin-filters">
+                <div class="fin-filter-group">
+                  <label for="poc-filter-vf">VF Invoice #</label>
+                  <select id="poc-filter-vf"><option value="">-- All --</option></select>
+                </div>
+                <div class="fin-filter-group">
+                  <label for="poc-filter-con">Contractor Invoice #</label>
+                  <select id="poc-filter-con"><option value="">-- All --</option></select>
+                </div>
+                <div class="fin-filter-group fin-filter-clear">
+                  <button id="btn-poc-clear-filters" class="btn-secondary">Clear Filters</button>
+                </div>
+              </div>
+
+              <div class="poc-stats-row fin-stats-row">
+                <div class="poc-stat-box fin-stat-red">
+                  <span class="poc-stat-label">Rows</span>
+                  <span class="poc-stat-value" id="poc-fin-stat-rows">0</span>
+                </div>
+                <div class="poc-stat-box poc-stat-migration">
+                  <span class="poc-stat-label">New Total Price</span>
+                  <span class="poc-stat-amount" id="poc-fin-stat-total">EGP 0</span>
+                </div>
+                <div class="poc-stat-box poc-stat-installation">
+                  <span class="poc-stat-label">LMP Portion</span>
+                  <span class="poc-stat-amount" id="poc-fin-stat-lmp">EGP 0</span>
+                </div>
+                <div class="poc-stat-box poc-stat-total">
+                  <span class="poc-stat-label">Contractor Portion</span>
+                  <span class="poc-stat-amount poc-stat-amount-total" id="poc-fin-stat-con2">EGP 0</span>
+                </div>
+              </div>
+
+              <div style="margin-top:1.25rem;">
+                <button id="btn-export-poc-fin" class="btn-primary" disabled>&#8659; Export to Excel</button>
+                <p id="poc-fin-export-status" class="con-export-status"></p>
+              </div>
+            </section>
+
+          </div><!-- /#fin-subpanel-poc -->
 
         </main>
       </div>
@@ -504,8 +589,28 @@
   <!-- Contractor sub-tab switching -->
   <script>
     (function () {
-      const subtabs   = document.querySelectorAll('.con-subtab');
-      const subpanels = document.querySelectorAll('.con-subpanel');
+      const panel     = document.getElementById('panel-contractor');
+      const subtabs   = panel.querySelectorAll('.con-subtab');
+      const subpanels = panel.querySelectorAll('.con-subpanel');
+      subtabs.forEach(btn => {
+        btn.addEventListener('click', () => {
+          subtabs.forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          const target = btn.dataset.subtab;
+          subpanels.forEach(p => {
+            p.style.display = p.id === target ? 'flex' : 'none';
+          });
+        });
+      });
+    })();
+  </script>
+
+  <!-- Finance sub-tab switching -->
+  <script>
+    (function () {
+      const panel     = document.getElementById('panel-finance');
+      const subtabs   = panel.querySelectorAll('.fin-subtab');
+      const subpanels = panel.querySelectorAll('.con-subpanel');
       subtabs.forEach(btn => {
         btn.addEventListener('click', () => {
           subtabs.forEach(b => b.classList.remove('active'));

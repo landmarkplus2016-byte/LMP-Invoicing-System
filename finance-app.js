@@ -232,7 +232,7 @@
     statusEl.textContent = 'Generating…';
     statusEl.className   = '';
     try {
-      await exportFinance(getFilteredRows());
+      await exportFinance(getFilteredRows(), 'Finance_Sheet.xlsx');
       statusEl.textContent = '\u2705 File downloaded.';
       statusEl.className   = 'export-status-success';
     } catch (err) {
@@ -243,7 +243,7 @@
     }
   });
 
-  async function exportFinance(rows) {
+  async function exportFinance(rows, filename) {
     const wb = new ExcelJS.Workbook();
     wb.creator = 'LMP Invoicing System';
     const ws = wb.addWorksheet('Finance Sheet');
@@ -272,13 +272,22 @@
     rows.forEach((row, ri) => {
       OUTPUT_COLS.forEach((col, ci) => {
         const c   = ws.getCell(2 + ri, ci + 1);
-        const val = row[col.key] ?? '';
-        c.value     = val;
+        let   val = row[col.key] ?? '';
+        // Fix timezone shift: SheetJS creates local-midnight Dates; ExcelJS
+        // serialises using UTC, so in UTC+N timezones the date lands one day
+        // earlier. Compensate by shifting the timestamp forward by the local
+        // UTC offset so ExcelJS sees exactly midnight UTC.
+        if (val instanceof Date) {
+          val = new Date(val.getTime() - val.getTimezoneOffset() * 60000);
+          c.value  = val;
+          c.numFmt = 'dd-mmm-yy';
+        } else {
+          c.value = val;
+          if (FINANCIAL_KEYS.has(col.key) && typeof val === 'number') c.numFmt = EGP_FMT;
+        }
         c.border    = ALL_THIN;
         c.font      = { size: 11 };
         c.alignment = { vertical: 'middle', wrapText: col.key === 'lineItem' };
-        if (FINANCIAL_KEYS.has(col.key) && typeof val === 'number') c.numFmt = EGP_FMT;
-        else if (val instanceof Date) c.numFmt = 'dd-mmm-yy';
       });
       ws.getRow(2 + ri).height = 14.4;
     });
@@ -308,7 +317,7 @@
     });
     const url = URL.createObjectURL(blob);
     const a   = Object.assign(document.createElement('a'), {
-      href: url, download: 'Finance_Sheet.xlsx'
+      href: url, download: filename || 'Finance_Sheet.xlsx'
     });
     document.body.appendChild(a);
     a.click();
@@ -345,6 +354,295 @@
     return String(s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+// ===========================================================================
+// POC TRACKING SUB-TAB
+// Reads a POC tracking sheet and produces the same Finance Sheet output.
+// Each source row generates TWO output rows (Installation + Migration).
+// ===========================================================================
+
+  let _wbPoc   = null;
+  let _rowsPoc = null;
+
+  // ── File picker ────────────────────────────────────────────────────────────
+  document.getElementById('btn-pick-poc-track').addEventListener('click', () => {
+    document.getElementById('poc-track-input').click();
+  });
+
+  document.getElementById('poc-track-input').addEventListener('change', async (e) => {
+    clearPocError();
+    const file = e.target.files[0];
+    if (!file) return;
+    pocFileProgress(true);
+    try {
+      const buf = await file.arrayBuffer();
+      _wbPoc = XLSX.read(buf, { type: 'array', cellDates: true });
+      document.getElementById('poc-track-filename').textContent = file.name;
+      document.getElementById('card-poc-track').classList.add('loaded');
+      pocFileProgress(false);
+      runPocAnalysis();
+    } catch (err) {
+      pocFileProgress(false);
+      showPocError('Failed to open file: ' + err.message);
+    }
+  });
+
+  // ── Analysis ───────────────────────────────────────────────────────────────
+  function runPocAnalysis() {
+    clearPocError();
+    pocLoading(true);
+    document.getElementById('poc-fin-results').style.display = 'none';
+    setTimeout(() => {
+      try {
+        _rowsPoc = extractPocRows();
+        populatePocFilters(_rowsPoc);
+        renderPocSummary(getPocFilteredRows());
+        pocLoading(false);
+        document.getElementById('poc-fin-results').style.display = 'block';
+        document.getElementById('poc-fin-results').scrollIntoView({ behavior: 'smooth' });
+      } catch (err) {
+        pocLoading(false);
+        showPocError(err.message || 'Unexpected error during analysis.');
+      }
+    }, 50);
+  }
+
+  function extractPocRows() {
+    // Accept any sheet — try 'POC3 Tracking' first, fall back to first sheet
+    const sheetName = _wbPoc.SheetNames.find(n => n.trim() === 'POC3 Tracking')
+                   || _wbPoc.SheetNames[0];
+    const sheet = _wbPoc.Sheets[sheetName];
+    if (!sheet) throw new Error('No sheet found in the file.');
+
+    const allRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
+
+    // Detect header row — look for the row that contains "INST Contractor"
+    let headerIdx = -1;
+    for (let i = 0; i < Math.min(30, allRows.length); i++) {
+      if (allRows[i].some(c => String(c ?? '').trim().toLowerCase() === 'inst contractor')) {
+        headerIdx = i;
+        break;
+      }
+    }
+    if (headerIdx < 0) throw new Error(
+      'Cannot find the header row. Expected a cell with exactly "INST Contractor".'
+    );
+
+    const header   = allRows[headerIdx];
+    const dataRows = allRows.slice(headerIdx + 1)
+                            .filter(r => r.some(c => c != null && c !== ''));
+
+    // ── Column detection ──────────────────────────────────────────────────
+    const cm = {};
+    header.forEach((h, i) => {
+      const t = String(h ?? '').trim().toLowerCase();
+
+      // Shared columns
+      if (cm.jobCode  === undefined && t === 'job code')           cm.jobCode  = i;
+      if (cm.siteId   === undefined && t === 'site id')            cm.siteId   = i;
+      if (cm.lineItem === undefined && t === 'line item')          cm.lineItem = i;
+      if (cm.total    === undefined && t.includes('total amount')) cm.total    = i;
+
+      // Installation columns
+      if (cm.instContractor === undefined
+          && t.includes('inst') && t.includes('contractor') && !t.includes('invoice'))
+                                                                   cm.instContractor = i;
+      if (cm.lmpIns === undefined
+          && t.includes('lmp') && t.includes('ins'))               cm.lmpIns = i;
+      if (cm.conIns === undefined
+          && t.includes('contractor') && t.includes('portion') && t.includes('ins'))
+                                                                   cm.conIns = i;
+      if (cm.installDate === undefined
+          && t.includes('installation') && t.includes('date'))     cm.installDate = i;
+      if (cm.invoiceIns === undefined
+          && (t.includes('invoice') || t.includes('invoice#'))
+          && t.includes('ins') && !t.includes('contractor'))       cm.invoiceIns = i;
+      if (cm.poIns === undefined
+          && t.startsWith('po') && !t.includes('portion') && t.includes('ins') && !t.includes('mig'))
+                                                                   cm.poIns = i;
+      if (cm.instConInvoice === undefined
+          && t.includes('inst') && t.includes('contractor') && t.includes('invoice'))
+                                                                   cm.instConInvoice = i;
+
+      // Migration columns
+      if (cm.migrContractor === undefined
+          && t.includes('migr') && t.includes('contractor') && !t.includes('invoice'))
+                                                                   cm.migrContractor = i;
+      if (cm.lmpMig === undefined
+          && t.includes('lmp') && t.includes('mig'))               cm.lmpMig = i;
+      if (cm.conMig === undefined
+          && t.includes('contractor') && t.includes('portion') && t.includes('mig'))
+                                                                   cm.conMig = i;
+      if (cm.migrDate === undefined
+          && t.includes('migration') && t.includes('date'))        cm.migrDate = i;
+      if (cm.invoiceMig === undefined
+          && (t.includes('invoice') || t.includes('invoice#'))
+          && t.includes('mig') && !t.includes('contractor'))       cm.invoiceMig = i;
+      if (cm.poMig === undefined
+          && t.startsWith('po') && !t.includes('portion') && t.includes('mig'))
+                                                                   cm.poMig = i;
+      if (cm.migrConInvoice === undefined
+          && t.includes('migr') && t.includes('contractor') && t.includes('invoice'))
+                                                                   cm.migrConInvoice = i;
+    });
+
+    // Validate required columns
+    const required = {
+      jobCode: 'Job Code', siteId: 'Site ID', lineItem: 'Line Item', total: 'Total Amount',
+      instContractor: 'INST Contractor', lmpIns: 'LMP Portion ins',
+      installDate: 'Installation Date', invoiceIns: 'Invoice# ins',
+      migrContractor: 'MIGR Contractor', lmpMig: 'LMP Portion mig',
+      migrDate: 'Migration Date', invoiceMig: 'Invoice# mig',
+    };
+    const missing = Object.entries(required)
+      .filter(([k]) => cm[k] === undefined).map(([, l]) => l);
+    if (missing.length > 0) throw new Error('Columns not found in header: ' + missing.join(', '));
+
+    function gv(row, key) {
+      const i = cm[key];
+      return (i !== undefined && i < row.length) ? (row[i] ?? '') : '';
+    }
+    function toNum(v) {
+      if (typeof v === 'number') return v;
+      const n = parseFloat(String(v).replace(/[^0-9.-]/g, ''));
+      return isNaN(n) ? '' : n;
+    }
+
+    const rows = [];
+    for (const row of dataRows) {
+      const totalRaw  = toNum(gv(row, 'total'));
+      const halfTotal = typeof totalRaw === 'number' ? totalRaw / 2 : '';
+
+      // Installation row
+      rows.push({
+        contractor:  gv(row, 'instContractor'),
+        jobCode:     gv(row, 'jobCode'),
+        siteId:      gv(row, 'siteId'),
+        lineItem:    gv(row, 'lineItem'),
+        lmp:         toNum(gv(row, 'lmpIns')),
+        contractor2: toNum(gv(row, 'conIns')),
+        newTotal:    halfTotal,
+        taskDate:    gv(row, 'installDate'),
+        vfInvoice:   String(gv(row, 'invoiceIns')).trim(),
+        poNumber:    String(gv(row, 'poIns')).trim(),
+        conInvoice:  String(gv(row, 'instConInvoice')).trim(),
+      });
+
+      // Migration row
+      rows.push({
+        contractor:  gv(row, 'migrContractor'),
+        jobCode:     gv(row, 'jobCode'),
+        siteId:      gv(row, 'siteId'),
+        lineItem:    gv(row, 'lineItem'),
+        lmp:         toNum(gv(row, 'lmpMig')),
+        contractor2: toNum(gv(row, 'conMig')),
+        newTotal:    halfTotal,
+        taskDate:    gv(row, 'migrDate'),
+        vfInvoice:   String(gv(row, 'invoiceMig')).trim(),
+        poNumber:    String(gv(row, 'poMig')).trim(),
+        conInvoice:  String(gv(row, 'migrConInvoice')).trim(),
+      });
+    }
+
+    const out = rows.filter(r => r.jobCode !== '' || r.siteId !== '');
+    if (out.length === 0) throw new Error('No data rows found in the POC tracking file.');
+    return out;
+  }
+
+  // ── Filters ────────────────────────────────────────────────────────────────
+  function populatePocFilters(rows) {
+    const vfSet  = new Set();
+    const conSet = new Set();
+    rows.forEach(r => {
+      if (r.vfInvoice)  vfSet.add(r.vfInvoice);
+      if (r.conInvoice) conSet.add(r.conInvoice);
+    });
+    fillPocSelect('poc-filter-vf',  [...vfSet].sort());
+    fillPocSelect('poc-filter-con', [...conSet].sort());
+  }
+
+  function fillPocSelect(id, values) {
+    document.getElementById(id).innerHTML =
+      '<option value="">-- All --</option>' +
+      values.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+  }
+
+  document.getElementById('poc-filter-vf').addEventListener('change',  onPocFilterChange);
+  document.getElementById('poc-filter-con').addEventListener('change', onPocFilterChange);
+  document.getElementById('btn-poc-clear-filters').addEventListener('click', () => {
+    document.getElementById('poc-filter-vf').value  = '';
+    document.getElementById('poc-filter-con').value = '';
+    onPocFilterChange();
+  });
+
+  function onPocFilterChange() {
+    if (!_rowsPoc) return;
+    renderPocSummary(getPocFilteredRows());
+  }
+
+  function getPocFilteredRows() {
+    if (!_rowsPoc) return [];
+    const vf  = document.getElementById('poc-filter-vf').value.trim();
+    const con = document.getElementById('poc-filter-con').value.trim();
+    return _rowsPoc.filter(r => {
+      if (vf  && r.vfInvoice  !== vf)  return false;
+      if (con && r.conInvoice !== con) return false;
+      return true;
+    });
+  }
+
+  // ── Summary stats ──────────────────────────────────────────────────────────
+  function renderPocSummary(rows) {
+    document.getElementById('poc-fin-stat-rows').textContent  = rows.length.toLocaleString();
+    document.getElementById('poc-fin-stat-total').textContent = fmtEGP(sumCol(rows, 'newTotal'));
+    document.getElementById('poc-fin-stat-lmp').textContent   = fmtEGP(sumCol(rows, 'lmp'));
+    document.getElementById('poc-fin-stat-con2').textContent  = fmtEGP(sumCol(rows, 'contractor2'));
+    document.getElementById('btn-export-poc-fin').disabled    = rows.length === 0;
+    document.getElementById('poc-fin-export-status').textContent = '';
+  }
+
+  // ── Export ─────────────────────────────────────────────────────────────────
+  document.getElementById('btn-export-poc-fin').addEventListener('click', async () => {
+    if (!_rowsPoc) return;
+    const btn      = document.getElementById('btn-export-poc-fin');
+    const statusEl = document.getElementById('poc-fin-export-status');
+    btn.disabled         = true;
+    statusEl.textContent = 'Generating…';
+    statusEl.className   = '';
+    try {
+      await exportFinance(getPocFilteredRows(), 'POC_Finance_Sheet.xlsx');
+      statusEl.textContent = '\u2705 File downloaded.';
+      statusEl.className   = 'export-status-success';
+    } catch (err) {
+      statusEl.textContent = '\u274c Export failed: ' + err.message;
+      statusEl.className   = 'export-status-error';
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  // ── UI helpers ─────────────────────────────────────────────────────────────
+  function showPocError(msg) {
+    const el = document.getElementById('poc-fin-error');
+    el.textContent   = msg;
+    el.style.display = 'block';
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  function clearPocError() {
+    const el = document.getElementById('poc-fin-error');
+    el.textContent   = '';
+    el.style.display = 'none';
+  }
+
+  function pocLoading(on) {
+    document.getElementById('poc-fin-loading').style.display = on ? 'flex' : 'none';
+  }
+
+  function pocFileProgress(on) {
+    const el = document.getElementById('poc-track-progress');
+    if (el) el.style.display = on ? 'block' : 'none';
   }
 
 })(); // end IIFE
