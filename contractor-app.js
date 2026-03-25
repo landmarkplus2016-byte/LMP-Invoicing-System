@@ -276,28 +276,27 @@ async function buildAndDownload(name, rows) {
 
 // ---------------------------------------------------------------------------
 // "Draft" sheet — formatted to match Upper Telecom Draft.xlsx
-// Layout: data in cols B–F, title merged E3:F4, headers row 5, data row 6+
+// Layout: cols B–F, title merged E3:F4, headers row 5, data row 6+, total at bottom
 // ---------------------------------------------------------------------------
 function addDraftSheet(wb, contractorName, rows) {
   const ws = wb.addWorksheet('Draft');
 
-  // Column widths  (A = narrow spacer so data begins at B)
+  // Column widths (A = narrow spacer so data begins at B)
   ws.getColumn(1).width = 2;
   ws.getColumn(2).width = 10;   // B — Job Code
   ws.getColumn(3).width = 10;   // C — Site ID
   ws.getColumn(4).width = 12;   // D — Facing
-  ws.getColumn(5).width = 55;   // E — Line Item  (wide — long descriptions)
-  ws.getColumn(6).width = 18;   // F — Price
+  ws.getColumn(5).width = 55;   // E — Line Item
+  ws.getColumn(6).width = 18;   // F — Amount
 
-  // --- Title: merged E3:F4 — left blank for manual entry ---
+  // --- Title: merged E3:F4 — left blank for manual invoice number entry ---
   ws.mergeCells('E3:F4');
-  const titleCell = ws.getCell('E3');
+  const titleCell     = ws.getCell('E3');
   titleCell.value     = '';
   titleCell.fill      = FILL_BLUE;
   titleCell.font      = { bold: true, size: 11 };
   titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
   titleCell.border    = ALL_THIN;
-  // Right border on D3/D4 to visually separate empty cols from title
   ws.getCell('D3').border = { right: THIN };
   ws.getCell('D4').border = { right: THIN };
   ws.getRow(3).height = 18;
@@ -306,6 +305,9 @@ function addDraftSheet(wb, contractorName, rows) {
   // --- Header row 5 ---
   styleHeaderRow(ws, 5, ['Job Code', ' Site ID', 'Facing', 'Line Item', 'Amount']);
 
+  // --- Freeze row 5 (header stays visible when scrolling) ---
+  ws.views = [{ state: 'frozen', ySplit: 5 }];
+
   // --- Data rows starting at row 6 ---
   let prevJobCode = null;
   rows.forEach((r, i) => {
@@ -313,11 +315,10 @@ function addDraftSheet(wb, contractorName, rows) {
     const isFirst = r.jobCode !== prevJobCode;
     if (isFirst) prevJobCode = r.jobCode;
     const rowFill = isFirst ? FILL_PEACH : FILL_WHITE;
-
     styleDataRow(ws, rn, [r.jobCode, r.siteId, r.facing, r.lineItem, fmtPrice(r.price)], rowFill);
   });
 
-  // --- Total row ---
+  // --- Total row at the bottom ---
   const totalRowNum = 6 + rows.length;
   const total       = sumPrices(rows);
   styleTotalRow(ws, totalRowNum, fmtPrice(total));

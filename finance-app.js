@@ -257,26 +257,46 @@
     const COL_WIDTHS = [18, 14, 14, 52, 16, 18, 18, 14, 20, 16, 24];
     OUTPUT_COLS.forEach((_, i) => { ws.getColumn(i + 1).width = COL_WIDTHS[i] || 16; });
 
-    // Header row
+    // Row 1: Total — "Total" centred in D1, financial totals in their columns
+    OUTPUT_COLS.forEach((col, ci) => {
+      const c = ws.getCell(1, ci + 1);
+      c.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF00B050' } };
+      c.font      = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
+      c.border    = ALL_THIN;
+      c.alignment = { vertical: 'middle' };
+      if (ci === 3) {                          // D1 = Line Item column
+        c.value = 'Total';
+        c.alignment.horizontal = 'center';
+      } else if (FINANCIAL_KEYS.has(col.key)) {
+        c.value  = sumCol(rows, col.key);
+        c.numFmt = EGP_FMT;
+        c.alignment.horizontal = 'right';
+      }
+    });
+    ws.getRow(1).height = 16;
+
+    // Row 2: blank gap between total and headers
+    ws.getRow(2).height = 6;
+
+    // Row 3: Column headers
     OUTPUT_COLS.forEach((col, i) => {
-      const c     = ws.getCell(1, i + 1);
+      const c     = ws.getCell(3, i + 1);
       c.value     = col.label;
       c.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF' + col.fill } };
       c.font      = { bold: true, color: { argb: 'FF' + col.font }, size: 11 };
       c.alignment = { horizontal: 'center', vertical: 'middle' };
       c.border    = ALL_DBL;
     });
-    ws.getRow(1).height = 22;
+    ws.getRow(3).height = 22;
 
-    // Data rows
+    // Freeze rows 1-3 (total + gap + header) so header stays visible when scrolling
+    ws.views = [{ state: 'frozen', ySplit: 3 }];
+
+    // Data rows (row 4+)
     rows.forEach((row, ri) => {
       OUTPUT_COLS.forEach((col, ci) => {
-        const c   = ws.getCell(2 + ri, ci + 1);
+        const c   = ws.getCell(4 + ri, ci + 1);
         let   val = row[col.key] ?? '';
-        // Fix timezone shift: SheetJS creates local-midnight Dates; ExcelJS
-        // serialises using UTC, so in UTC+N timezones the date lands one day
-        // earlier. Compensate by shifting the timestamp forward by the local
-        // UTC offset so ExcelJS sees exactly midnight UTC.
         if (val instanceof Date) {
           val = new Date(val.getTime() - val.getTimezoneOffset() * 60000);
           c.value  = val;
@@ -289,27 +309,8 @@
         c.font      = { size: 11 };
         c.alignment = { vertical: 'middle', wrapText: col.key === 'lineItem' };
       });
-      ws.getRow(2 + ri).height = 14.4;
+      ws.getRow(4 + ri).height = 14.4;
     });
-
-    // Total row
-    const totalRn = 2 + rows.length;
-    OUTPUT_COLS.forEach((col, ci) => {
-      const c  = ws.getCell(totalRn, ci + 1);
-      c.fill   = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF00B050' } };
-      c.font   = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
-      c.border = ALL_THIN;
-      c.alignment = { vertical: 'middle' };
-      if (ci === 0) {
-        c.value = 'Total';
-        c.alignment.horizontal = 'left';
-      } else if (FINANCIAL_KEYS.has(col.key)) {
-        c.value  = sumCol(rows, col.key);
-        c.numFmt = EGP_FMT;
-        c.alignment.horizontal = 'right';
-      }
-    });
-    ws.getRow(totalRn).height = 16;
 
     const buf  = await wb.xlsx.writeBuffer();
     const blob = new Blob([buf], {
