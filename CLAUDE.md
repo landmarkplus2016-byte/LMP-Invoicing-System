@@ -10,19 +10,20 @@ A static, no-build PWA (Progressive Web App) for the Landmark Plus Telecom Depar
 
 ## Architecture
 
-All logic lives in three files loaded by `index.html` as plain `<script>` tags:
+All logic lives in four files loaded by `index.html` as plain `<script>` tags:
 
 | File | Purpose |
 |---|---|
 | `poc-app.js` | POC Invoice Prep — reads one Excel file, filters rows, exports styled XLSX |
 | `tsr-app.js` | TSR Submission Checker — reads two Excel files, cross-references them, exports XLSX |
 | `contractor-app.js` | Contractor Invoices — reads the tracking file, generates one styled XLSX per contractor |
-| `styles.css` | All styling for all three tabs and shared components |
+| `finance-app.js` | Finance Sheet — reads the tracking file, filters by invoice numbers, exports styled XLSX |
+| `styles.css` | All styling for all four tabs and shared components |
 | `sw.js` | Service worker — caches app shell for offline use |
 
-All three app files are wrapped in IIFEs to avoid global namespace collisions. They share two CDN libraries loaded in `index.html`:
+All app files are wrapped in IIFEs to avoid global namespace collisions. They share two CDN libraries loaded in `index.html`:
 - **SheetJS** (`XLSX`) — reading all Excel formats (.xlsx, .xls, .xlsm, .xlsb, .csv)
-- **ExcelJS** — writing styled Excel output (POC and Contractor apps; TSR app uses SheetJS `writeFile`)
+- **ExcelJS** — writing styled Excel output (POC, Contractor, and Finance apps; TSR app uses SheetJS `writeFile`)
 
 ## Layout (`index.html` + `styles.css`)
 
@@ -30,11 +31,11 @@ The app uses a **sidebar + main content** layout (not a top header + tab bar):
 
 - **`.sidebar`** (left, fixed width 230px) — `#0070C0` blue gradient background. Contains:
   - `.sidebar-header` — logo (`LMP Big Logo.jpg`) + brand title/subtitle
-  - `.sidebar-nav` — three `.nav-item` tab buttons (one per app)
+  - `.sidebar-nav` — four `.nav-item` tab buttons (one per app)
   - `.sidebar-footer` — **New Analysis** button (`#btn-refresh`) at the bottom; clicking it calls `window.location.reload()` to clear all state
 - **`.main-wrapper`** (right, flex:1) — ledger-paper background (`#eaf0f7`). Contains:
   - `.content-header` — white bar showing the current tab's page title (`#page-title`), updated by the tab-switching JS
-  - Three `.tab-panel` divs (one per app)
+  - Four `.tab-panel` divs (one per app)
   - `<footer>` — navy blue (`#1a3a5c`) with white text
 
 **Color scheme:**
@@ -57,6 +58,7 @@ The tab-switching JS updates both the `.nav-item` active state and the `#page-ti
    - **Step 2 (Migration):** `migrationStatus == "done"` AND `acceptanceStatus == "fac"` AND `migInvoicingDate` blank AND `lineItem != "POC2 Migration"`
 5. `Invoice Amount` = `Total Amount / 2` for every row
 6. ExcelJS writes the output with colour-coded column headers (blue = tracking fields, green = acceptance fields, gold = financial fields) plus a merged total amount cell at row 1
+7. Date columns (Installation Date, Migration Date, FAC Date) are written as native Excel date values with format `dd-mmm-yy` — not as strings
 
 ## TSR App Data Flow (`tsr-app.js`)
 
@@ -116,9 +118,55 @@ Reads the same **Tracking file (.xlsm)** used by the TSR tab (sheet `Invoicing T
 - `Line Item` is always read from hardcoded **col 18** (same as TSR app) — header-name detection is attempted first but col 18 is the reliable fallback for this file format.
 - Contractor names are fuzzy-matched against the canonical list in `list.xlsx` (`Connect`, `DAM Tel`, `El-Khayal`, `New Plan`, `Upper Telecom`) using Levenshtein distance with a 40%-of-name-length threshold.
 - `In-House` rows are explicitly excluded before fuzzy matching.
+- **Invoice Amount = `New Total × 0.7`** (70% of the task price). Rounded to 2 decimal places via `toContractorAmount()` helper.
 - One `.xlsx` file is generated per contractor, named `[Contractor Name] Draft.xlsx`, each containing:
   - **Draft sheet** — cols B–F: Job Code, Site ID, Facing, Line Item, Amount. Title cell E3:F4 (merged, blue, blank for manual draft number entry). Alternating row colours: first row of each Job Code group = peach (`#F8CBAD`), rest = white. Total row = green (`#00FF00`).
   - **Deduction sheet** — cols B–E only: Job Code, Site ID, Facing, Deduction Amount (empty, for manual entry). No Price/Amount column.
+
+## Finance Sheet Data Flow (`finance-app.js`)
+
+Reads the same **Tracking file (.xlsm)** (sheet `Invoicing Track`, header row index 3, data from row index 4).
+
+**No row filtering is applied** — all non-empty rows are extracted. Filtering is done interactively in the UI via two dropdowns.
+
+### Output Columns (in order)
+
+| Source Column | Output Label | Header Colour |
+|---|---|---|
+| Contractor | Contractor | `#0070C0` blue |
+| Job Code | Job Code | `#00B050` green |
+| Logical Site ID | Site ID | `#00B050` green |
+| Line Item (col 18) | Line Item | `#00B0F0` light blue |
+| LMP | LMP Portion | `#4472C4` medium blue |
+| Contractor2 | Contractor Portion | `#4472C4` medium blue |
+| New Total | New Total Price | `#C00000` dark red |
+| Task Date | Task Date | `#ED7D31` orange |
+| VF Invoice # | VF Invoice # | `#2E75B6` steel blue |
+| PO Number | PO Number | `#2E75B6` steel blue |
+| Contractor Invoice # | Contractor Invoice # | `#FFD700` yellow |
+
+**Column detection notes:**
+- `Line Item` always hardcoded to col 18 (same as other apps for this file format)
+- `Contractor2` matched before `Contractor` to avoid false matches — looks for `includes('contractor') && includes('2')`
+- `LMP` exact match (`=== 'lmp'`) preferred; falls back to `includes('lmp')` excluding invoicing/date/status columns
+
+### UI Filters
+
+Two dropdowns populated from unique non-blank values in the tracking data:
+- **VF Invoice #** — filters rows where VF Invoice # matches selected value
+- **Contractor Invoice #** — filters rows where Contractor Invoice # matches selected value
+
+Both filters act as AND (if both selected). Default `-- All --` shows all rows. Summary stats (row count, New Total Price sum, LMP Portion sum, Contractor Portion sum) update live on filter change.
+
+### Date handling
+
+Task Date is written as a native Excel date value with format `dd-mmm-yy` — not as a string. Same fix applies to all date columns in the POC app output.
+
+## Date Output Convention
+
+**All apps** write date values as native Excel dates (JS `Date` objects passed directly to ExcelJS) with number format `dd-mmm-yy`. Do **not** use the `formatDate()` string helper when writing to ExcelJS cells — that produces text strings that Excel cannot sort or filter as dates.
+
+The `formatDate()` function remains in the codebase but is no longer used for Excel output.
 
 ## Icons
 
@@ -126,4 +174,4 @@ Reads the same **Tracking file (.xlsm)** used by the TSR tab (sheet `Invoicing T
 
 ## Service Worker Cache
 
-When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v2` → `lmp-invoicing-v3`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v3`.
+When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v3` → `lmp-invoicing-v4`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v4`.

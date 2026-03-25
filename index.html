@@ -221,49 +221,138 @@
       <div id="panel-contractor" class="tab-panel" style="display:none">
         <main class="contractor-main">
 
-          <div id="con-error" role="alert" class="con-error-msg" style="display:none"></div>
-
-          <!-- File Selection -->
-          <section class="card">
-            <h2>Upload Tracking File</h2>
-            <div style="display:flex; justify-content:center; margin-top:0.5rem;">
-              <div id="card-con-track" class="file-card" style="width:100%; max-width:420px;">
-                <div class="file-icon">&#128193;</div>
-                <div class="file-label">Task Tracking File (.xlsm)</div>
-                <button id="btn-pick-con-track" class="btn-secondary">Browse File</button>
-                <input type="file" id="con-track-input" accept=".xlsm,.xlsx" style="display:none" />
-                <span id="con-track-filename" class="filename-display">No file selected</span>
-                <div id="con-track-progress" class="file-progress"></div>
-              </div>
-            </div>
-          </section>
-
-          <!-- Loading -->
-          <div id="con-loading" style="display:none" class="con-loading-wrap">
-            <div class="spinner"></div>
-            <p>Analysing contractors…</p>
+          <!-- Sub-tab bar -->
+          <div class="con-subtab-bar">
+            <button class="con-subtab active" data-subtab="con-subpanel-2026">
+              &#128197; 2026 Tasks
+            </button>
+            <button class="con-subtab" data-subtab="con-subpanel-pre">
+              &#128194; Pre-2026 Tasks
+            </button>
           </div>
 
-          <!-- Results -->
-          <section id="con-results" class="card" style="display:none">
-            <h2>Contractor Summary</h2>
-            <p class="card-hint">One Excel file per contractor — each file contains a <em>Draft</em> sheet and a <em>Deduction</em> sheet.</p>
-            <div class="table-wrapper">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Contractor</th>
-                    <th style="width:160px; text-align:right;">Invoice Amount</th>
-                  </tr>
-                </thead>
-                <tbody id="con-summary-tbody"></tbody>
-              </table>
+          <!-- ── SUB-PANEL: 2026 Tasks ──────────────────────────────── -->
+          <div id="con-subpanel-2026" class="con-subpanel">
+
+            <div id="con-error" role="alert" class="con-error-msg" style="display:none"></div>
+
+            <!-- File Selection -->
+            <section class="card">
+              <h2>Upload Tracking File</h2>
+              <div style="display:flex; justify-content:center; margin-top:0.5rem;">
+                <div id="card-con-track" class="file-card" style="width:100%; max-width:420px;">
+                  <div class="file-icon">&#128193;</div>
+                  <div class="file-label">Task Tracking File (.xlsm)</div>
+                  <button id="btn-pick-con-track" class="btn-secondary">Browse File</button>
+                  <input type="file" id="con-track-input" accept=".xlsm,.xlsx" style="display:none" />
+                  <span id="con-track-filename" class="filename-display">No file selected</span>
+                  <div id="con-track-progress" class="file-progress"></div>
+                </div>
+              </div>
+            </section>
+
+            <!-- Loading -->
+            <div id="con-loading" style="display:none" class="con-loading-wrap">
+              <div class="spinner"></div>
+              <p>Analysing contractors…</p>
             </div>
-            <div style="margin-top:1.25rem;">
-              <button id="btn-export-con" class="btn-primary" disabled>&#8659; Export All Files</button>
-              <p id="con-export-status" class="con-export-status"></p>
+
+            <!-- Results -->
+            <section id="con-results" class="card" style="display:none">
+              <h2>Contractor Summary</h2>
+              <p class="card-hint">One Excel file per contractor — each file contains a <em>Draft</em> sheet and a <em>Deduction</em> sheet.</p>
+              <div class="table-wrapper">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Contractor</th>
+                      <th style="width:160px; text-align:right;">Invoice Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody id="con-summary-tbody"></tbody>
+                </table>
+              </div>
+              <div style="margin-top:1.25rem;">
+                <button id="btn-export-con" class="btn-primary" disabled>&#8659; Export All Files</button>
+                <p id="con-export-status" class="con-export-status"></p>
+              </div>
+            </section>
+
+          </div><!-- /#con-subpanel-2026 -->
+
+          <!-- ── SUB-PANEL: Pre-2026 Tasks ─────────────────────────── -->
+          <div id="con-subpanel-pre" class="con-subpanel" style="display:none">
+
+            <div id="con2-error" role="alert" class="con-error-msg" style="display:none"></div>
+
+            <!-- File Selection -->
+            <section class="card">
+              <h2>Upload Tracking File</h2>
+              <div style="display:flex; justify-content:center; margin-top:0.5rem;">
+                <div id="card-con2-track" class="file-card" style="width:100%; max-width:420px;">
+                  <div class="file-icon">&#128193;</div>
+                  <div class="file-label">Task Tracking File (.xlsm)</div>
+                  <button id="btn-pick-con2-track" class="btn-secondary">Browse File</button>
+                  <input type="file" id="con2-track-input" accept=".xlsm,.xlsx" style="display:none" />
+                  <span id="con2-track-filename" class="filename-display">No file selected</span>
+                  <div id="con2-track-progress" class="file-progress"></div>
+                </div>
+              </div>
+            </section>
+
+            <!-- Loading -->
+            <div id="con2-loading" style="display:none" class="con-loading-wrap">
+              <div class="spinner"></div>
+              <p>Reading tracking data&#8230;</p>
             </div>
-          </section>
+
+            <!-- Results -->
+            <section id="con2-results" class="card" style="display:none">
+              <h2>Filters</h2>
+              <div class="fin-filters">
+                <div class="fin-filter-group">
+                  <label for="con2-filter-vf">VF Invoice #</label>
+                  <select id="con2-filter-vf"><option value="">-- All --</option></select>
+                </div>
+                <div class="fin-filter-group fin-filter-clear">
+                  <button id="btn-con2-clear-filter" class="btn-secondary">Clear Filter</button>
+                </div>
+              </div>
+
+              <div class="poc-stats-row fin-stats-row">
+                <div class="poc-stat-box fin-stat-red">
+                  <span class="poc-stat-label">Rows</span>
+                  <span class="poc-stat-value" id="con2-stat-rows">0</span>
+                </div>
+                <div class="poc-stat-box poc-stat-migration">
+                  <span class="poc-stat-label">Invoice Amount</span>
+                  <span class="poc-stat-amount" id="con2-stat-amount">EGP 0</span>
+                </div>
+                <div class="poc-stat-box poc-stat-total">
+                  <span class="poc-stat-label">Contractors</span>
+                  <span class="poc-stat-value" id="con2-stat-contractors">0</span>
+                </div>
+              </div>
+
+              <p class="card-hint" style="margin-top:1rem;">One Excel file per contractor — each file contains a <em>Draft</em> sheet and a <em>Deduction</em> sheet.</p>
+              <div class="table-wrapper">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Contractor</th>
+                      <th style="width:160px; text-align:right;">Invoice Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody id="con2-summary-tbody"></tbody>
+                </table>
+              </div>
+              <div style="margin-top:1.25rem;">
+                <button id="btn-export-con2" class="btn-primary" disabled>&#8659; Export All Files</button>
+                <p id="con2-export-status" class="con-export-status"></p>
+              </div>
+            </section>
+
+          </div><!-- /#con-subpanel-pre -->
 
         </main>
       </div>
@@ -407,6 +496,24 @@
         deferredPrompt.userChoice.then(() => {
           document.getElementById('install-banner').style.display = 'none';
           deferredPrompt = null;
+        });
+      });
+    })();
+  </script>
+
+  <!-- Contractor sub-tab switching -->
+  <script>
+    (function () {
+      const subtabs   = document.querySelectorAll('.con-subtab');
+      const subpanels = document.querySelectorAll('.con-subpanel');
+      subtabs.forEach(btn => {
+        btn.addEventListener('click', () => {
+          subtabs.forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          const target = btn.dataset.subtab;
+          subpanels.forEach(p => {
+            p.style.display = p.id === target ? 'flex' : 'none';
+          });
         });
       });
     })();

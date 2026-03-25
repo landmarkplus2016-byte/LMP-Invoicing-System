@@ -992,6 +992,50 @@ footer p + p {
   min-height: 1.5em;
 }
 
+/* ---------------------------------------------------------------------------
+   Contractor tab — sub-tab bar
+   --------------------------------------------------------------------------- */
+.con-subtab-bar {
+  display: flex;
+  gap: 0.5rem;
+  background: #fff;
+  border-radius: 10px;
+  padding: 0.4rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border-top: 3px solid #1a3a5c;
+}
+
+.con-subtab {
+  flex: 1;
+  padding: 0.6rem 1.25rem;
+  border: none;
+  border-radius: 7px;
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+  background: transparent;
+  color: #4b5563;
+  letter-spacing: 0.01em;
+}
+
+.con-subtab.active {
+  background: linear-gradient(135deg, #1a3a5c, #0070C0);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(0, 112, 192, 0.35);
+}
+
+.con-subtab:not(.active):hover {
+  background: #eef3f9;
+  color: #1a3a5c;
+}
+
+.con-subpanel {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
 /* =============================================================================
    Responsive
    ============================================================================= */
