@@ -11,17 +11,35 @@
   // Output column definitions (key, output label, header fill/font colours)
   // ---------------------------------------------------------------------------
   const OUTPUT_COLS = [
-    { key: 'contractor',  label: 'Contractor',          fill: '0070C0', font: 'FFFFFF' },
-    { key: 'jobCode',     label: 'Job Code',             fill: '00B050', font: 'FFFFFF' },
-    { key: 'siteId',      label: 'Site ID',              fill: '00B050', font: 'FFFFFF' },
-    { key: 'lineItem',    label: 'Line Item',            fill: '00B0F0', font: 'FFFFFF' },
-    { key: 'lmp',         label: 'LMP Portion',          fill: '4472C4', font: 'FFFFFF' },
-    { key: 'contractor2', label: 'Contractor Portion',   fill: '4472C4', font: 'FFFFFF' },
-    { key: 'newTotal',    label: 'New Total Price',      fill: 'C00000', font: 'FFFFFF' },
-    { key: 'taskDate',    label: 'Task Date',            fill: 'ED7D31', font: 'FFFFFF' },
-    { key: 'vfInvoice',   label: 'VF Invoice #',         fill: '2E75B6', font: 'FFFFFF' },
-    { key: 'poNumber',    label: 'PO Number',            fill: '2E75B6', font: 'FFFFFF' },
-    { key: 'conInvoice',  label: 'Contractor Invoice #', fill: 'FFD700', font: '000000' },
+    { key: 'contractor',  label: 'Contractor',          fill: '0070C0', font: 'FFFFFF', width: 18 },
+    { key: 'jobCode',     label: 'Job Code',             fill: 'FFC000', font: '000000', width: 14 },
+    { key: 'siteId',      label: 'Site ID',              fill: 'FFC000', font: '000000', width: 14 },
+    { key: 'lineItem',    label: 'Line Item',            fill: '00B0F0', font: 'FFFFFF', width: 52 },
+    { key: 'lmp',         label: 'LMP Portion',          fill: '4472C4', font: 'FFFFFF', width: 16 },
+    { key: 'contractor2', label: 'Contractor Portion',   fill: '4472C4', font: 'FFFFFF', width: 18 },
+    { key: 'newTotal',    label: 'New Total Price',      fill: 'C00000', font: 'FFFFFF', width: 18 },
+    { key: 'taskDate',    label: 'Task Date',            fill: 'ED7D31', font: 'FFFFFF', width: 14 },
+    { key: 'vfInvoice',   label: 'VF Invoice #',         fill: '2E75B6', font: 'FFFFFF', width: 20 },
+    { key: 'poNumber',    label: 'PO Number',            fill: '2E75B6', font: 'FFFFFF', width: 16 },
+    { key: 'conInvoice',  label: 'Contractor Invoice #', fill: 'FFD700', font: '000000', width: 24 },
+    { key: 'taskType',    label: 'Task Type',            fill: 'FF0000', font: 'FFFFFF', width: 12 },
+  ];
+
+  // POC Tracking uses two separate date columns instead of one Task Date
+  const POC_OUTPUT_COLS = [
+    { key: 'contractor',  label: 'Contractor',          fill: '0070C0', font: 'FFFFFF', width: 18 },
+    { key: 'jobCode',     label: 'Job Code',             fill: 'FFC000', font: '000000', width: 14 },
+    { key: 'siteId',      label: 'Site ID',              fill: 'FFC000', font: '000000', width: 14 },
+    { key: 'lineItem',    label: 'Line Item',            fill: '00B0F0', font: 'FFFFFF', width: 52 },
+    { key: 'lmp',         label: 'LMP Portion',          fill: '4472C4', font: 'FFFFFF', width: 16 },
+    { key: 'contractor2', label: 'Contractor Portion',   fill: '4472C4', font: 'FFFFFF', width: 18 },
+    { key: 'newTotal',    label: 'New Total Price',      fill: 'C00000', font: 'FFFFFF', width: 18 },
+    { key: 'installDate', label: 'Installation Date',    fill: 'ED7D31', font: 'FFFFFF', width: 16 },
+    { key: 'migrDate',    label: 'Migration Date',       fill: 'ED7D31', font: 'FFFFFF', width: 16 },
+    { key: 'vfInvoice',   label: 'VF Invoice #',         fill: '2E75B6', font: 'FFFFFF', width: 20 },
+    { key: 'poNumber',    label: 'PO Number',            fill: '2E75B6', font: 'FFFFFF', width: 16 },
+    { key: 'conInvoice',  label: 'Contractor Invoice #', fill: 'FFD700', font: '000000', width: 24 },
+    { key: 'taskType',    label: 'Task Type',            fill: 'FF0000', font: 'FFFFFF', width: 12 },
   ];
 
   const FINANCIAL_KEYS = new Set(['lmp', 'contractor2', 'newTotal']);
@@ -142,6 +160,14 @@
         }
         obj[col.key] = v;
       }
+      // Derive Task Type from Task Date
+      const td = obj.taskDate;
+      let yr = (td instanceof Date) ? td.getFullYear() : null;
+      if (yr === null && typeof td === 'string' && td) {
+        const m = td.match(/\b(20\d{2})\b/);
+        if (m) yr = parseInt(m[1]);
+      }
+      obj.taskType = yr !== null ? (yr >= 2026 ? 'New' : 'Old') : '';
       return obj;
     }).filter(r => OUTPUT_COLS.some(c => r[c.key] !== '' && r[c.key] != null));
   }
@@ -168,13 +194,12 @@
   }
 
   function fillSelect(id, values) {
-    document.getElementById(id).innerHTML =
-      '<option value="">-- All --</option>' +
-      values.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+    const dl = document.getElementById(id + '-list');
+    if (dl) dl.innerHTML = values.map(v => `<option value="${esc(v)}"></option>`).join('');
   }
 
-  document.getElementById('fin-filter-vf').addEventListener('change',  onFilterChange);
-  document.getElementById('fin-filter-con').addEventListener('change', onFilterChange);
+  document.getElementById('fin-filter-vf').addEventListener('input',  onFilterChange);
+  document.getElementById('fin-filter-con').addEventListener('input', onFilterChange);
   document.getElementById('btn-fin-clear-filters').addEventListener('click', () => {
     document.getElementById('fin-filter-vf').value  = '';
     document.getElementById('fin-filter-con').value = '';
@@ -188,11 +213,11 @@
 
   function getFilteredRows() {
     if (!_rows) return [];
-    const vf  = document.getElementById('fin-filter-vf').value.trim();
-    const con = document.getElementById('fin-filter-con').value.trim();
+    const vf  = document.getElementById('fin-filter-vf').value.trim().toLowerCase();
+    const con = document.getElementById('fin-filter-con').value.trim().toLowerCase();
     return _rows.filter(r => {
-      if (vf  && String(r.vfInvoice  ?? '').trim() !== vf)  return false;
-      if (con && String(r.conInvoice ?? '').trim() !== con) return false;
+      if (vf  && !String(r.vfInvoice  ?? '').toLowerCase().includes(vf))  return false;
+      if (con && !String(r.conInvoice ?? '').toLowerCase().includes(con)) return false;
       return true;
     });
   }
@@ -243,7 +268,8 @@
     }
   });
 
-  async function exportFinance(rows, filename) {
+  async function exportFinance(rows, filename, cols) {
+    cols = cols || OUTPUT_COLS;
     const wb = new ExcelJS.Workbook();
     wb.creator = 'LMP Invoicing System';
     const ws = wb.addWorksheet('Finance Sheet');
@@ -254,17 +280,17 @@
     const ALL_DBL  = { top: DBL,  left: DBL,  bottom: DBL,  right: DBL  };
     const EGP_FMT  = '#,##0.00 "EGP"';
 
-    const COL_WIDTHS = [18, 14, 14, 52, 16, 18, 18, 14, 20, 16, 24];
-    OUTPUT_COLS.forEach((_, i) => { ws.getColumn(i + 1).width = COL_WIDTHS[i] || 16; });
+    cols.forEach((col, i) => { ws.getColumn(i + 1).width = col.width || 16; });
 
-    // Row 1: Total — "Total" centred in D1, financial totals in their columns
-    OUTPUT_COLS.forEach((col, ci) => {
+    // Row 1: Total — "Total" centred in D1 (Line Item column), financial totals in their columns
+    const lineItemIdx = cols.findIndex(c => c.key === 'lineItem');
+    cols.forEach((col, ci) => {
       const c = ws.getCell(1, ci + 1);
       c.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF00B050' } };
       c.font      = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
       c.border    = ALL_THIN;
       c.alignment = { vertical: 'middle' };
-      if (ci === 3) {                          // D1 = Line Item column
+      if (ci === lineItemIdx) {
         c.value = 'Total';
         c.alignment.horizontal = 'center';
       } else if (FINANCIAL_KEYS.has(col.key)) {
@@ -279,7 +305,7 @@
     ws.getRow(2).height = 6;
 
     // Row 3: Column headers
-    OUTPUT_COLS.forEach((col, i) => {
+    cols.forEach((col, i) => {
       const c     = ws.getCell(3, i + 1);
       c.value     = col.label;
       c.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF' + col.fill } };
@@ -294,7 +320,7 @@
 
     // Data rows (row 4+)
     rows.forEach((row, ri) => {
-      OUTPUT_COLS.forEach((col, ci) => {
+      cols.forEach((col, ci) => {
         const c   = ws.getCell(4 + ri, ci + 1);
         let   val = row[col.key] ?? '';
         if (val instanceof Date) {
@@ -510,10 +536,24 @@
       return isNaN(n) ? '' : n;
     }
 
+    function taskTypeFromDate(d) {
+      let yr = (d instanceof Date) ? d.getFullYear() : null;
+      if (yr === null && typeof d === 'string' && d) {
+        const m = d.match(/\b(20\d{2})\b/);
+        if (m) yr = parseInt(m[1]);
+      }
+      return yr !== null ? (yr >= 2026 ? 'New' : 'Old') : '';
+    }
+
     const rows = [];
     for (const row of dataRows) {
       const totalRaw  = toNum(gv(row, 'total'));
       const halfTotal = typeof totalRaw === 'number' ? totalRaw / 2 : '';
+
+      // Task Type is always based on the installation date for both rows
+      const instDate    = gv(row, 'installDate');
+      const migrDate    = gv(row, 'migrDate');
+      const rowTaskType = taskTypeFromDate(instDate);
 
       // Installation row
       rows.push({
@@ -524,10 +564,12 @@
         lmp:         toNum(gv(row, 'lmpIns')),
         contractor2: toNum(gv(row, 'conIns')),
         newTotal:    halfTotal,
-        taskDate:    gv(row, 'installDate'),
+        installDate: instDate,
+        migrDate:    migrDate,
         vfInvoice:   String(gv(row, 'invoiceIns')).trim(),
         poNumber:    String(gv(row, 'poIns')).trim(),
         conInvoice:  String(gv(row, 'instConInvoice')).trim(),
+        taskType:    rowTaskType,
       });
 
       // Migration row
@@ -539,10 +581,12 @@
         lmp:         toNum(gv(row, 'lmpMig')),
         contractor2: toNum(gv(row, 'conMig')),
         newTotal:    halfTotal,
-        taskDate:    gv(row, 'migrDate'),
+        installDate: instDate,
+        migrDate:    migrDate,
         vfInvoice:   String(gv(row, 'invoiceMig')).trim(),
         poNumber:    String(gv(row, 'poMig')).trim(),
         conInvoice:  String(gv(row, 'migrConInvoice')).trim(),
+        taskType:    rowTaskType,
       });
     }
 
@@ -564,13 +608,12 @@
   }
 
   function fillPocSelect(id, values) {
-    document.getElementById(id).innerHTML =
-      '<option value="">-- All --</option>' +
-      values.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+    const dl = document.getElementById(id + '-list');
+    if (dl) dl.innerHTML = values.map(v => `<option value="${esc(v)}"></option>`).join('');
   }
 
-  document.getElementById('poc-filter-vf').addEventListener('change',  onPocFilterChange);
-  document.getElementById('poc-filter-con').addEventListener('change', onPocFilterChange);
+  document.getElementById('poc-filter-vf').addEventListener('input',  onPocFilterChange);
+  document.getElementById('poc-filter-con').addEventListener('input', onPocFilterChange);
   document.getElementById('btn-poc-clear-filters').addEventListener('click', () => {
     document.getElementById('poc-filter-vf').value  = '';
     document.getElementById('poc-filter-con').value = '';
@@ -584,11 +627,11 @@
 
   function getPocFilteredRows() {
     if (!_rowsPoc) return [];
-    const vf  = document.getElementById('poc-filter-vf').value.trim();
-    const con = document.getElementById('poc-filter-con').value.trim();
+    const vf  = document.getElementById('poc-filter-vf').value.trim().toLowerCase();
+    const con = document.getElementById('poc-filter-con').value.trim().toLowerCase();
     return _rowsPoc.filter(r => {
-      if (vf  && r.vfInvoice  !== vf)  return false;
-      if (con && r.conInvoice !== con) return false;
+      if (vf  && !String(r.vfInvoice  ?? '').toLowerCase().includes(vf))  return false;
+      if (con && !String(r.conInvoice ?? '').toLowerCase().includes(con)) return false;
       return true;
     });
   }
@@ -612,7 +655,7 @@
     statusEl.textContent = 'Generating…';
     statusEl.className   = '';
     try {
-      await exportFinance(getPocFilteredRows(), 'POC_Finance_Sheet.xlsx');
+      await exportFinance(getPocFilteredRows(), 'POC_Finance_Sheet.xlsx', POC_OUTPUT_COLS);
       statusEl.textContent = '\u2705 File downloaded.';
       statusEl.className   = 'export-status-success';
     } catch (err) {

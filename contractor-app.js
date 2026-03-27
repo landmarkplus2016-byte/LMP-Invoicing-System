@@ -572,12 +572,11 @@ function extractPocConRows() {
 function populatePocConFilter(rows) {
   const vfSet = new Set();
   rows.forEach(r => { if (r.vfInvoice) vfSet.add(r.vfInvoice); });
-  document.getElementById('con-poc-filter-vf').innerHTML =
-    '<option value="">-- All --</option>' +
-    [...vfSet].sort().map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+  const dlPocCon = document.getElementById('con-poc-filter-vf-list');
+  if (dlPocCon) dlPocCon.innerHTML = [...vfSet].sort().map(v => `<option value="${esc(v)}"></option>`).join('');
 }
 
-document.getElementById('con-poc-filter-vf').addEventListener('change', onPocConFilterChange);
+document.getElementById('con-poc-filter-vf').addEventListener('input', onPocConFilterChange);
 document.getElementById('btn-con-poc-clear-filter').addEventListener('click', () => {
   document.getElementById('con-poc-filter-vf').value = '';
   onPocConFilterChange();
@@ -590,8 +589,8 @@ function onPocConFilterChange() {
 
 function getPocConFilteredGroups() {
   if (!_allRowsPocCon) return new Map();
-  const vf = document.getElementById('con-poc-filter-vf').value.trim();
-  const filtered = _allRowsPocCon.filter(r => !vf || r.vfInvoice === vf);
+  const vf = document.getElementById('con-poc-filter-vf').value.trim().toLowerCase();
+  const filtered = _allRowsPocCon.filter(r => !vf || String(r.vfInvoice ?? '').toLowerCase().includes(vf));
   const groups = new Map();
   for (const row of filtered) {
     if (!groups.has(row.contractor)) groups.set(row.contractor, []);
@@ -778,17 +777,23 @@ function extractCon2Rows() {
 }
 
 function populateCon2Filter(rows) {
-  const vfSet = new Set();
-  rows.forEach(r => { if (r.vfInvoice) vfSet.add(r.vfInvoice); });
-  const sorted = [...vfSet].sort();
-  document.getElementById('con2-filter-vf').innerHTML =
-    '<option value="">-- All --</option>' +
-    sorted.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+  const vfSet  = new Set();
+  const conSet = new Set();
+  rows.forEach(r => {
+    if (r.vfInvoice)  vfSet.add(r.vfInvoice);
+    if (r.contractor) conSet.add(r.contractor);
+  });
+  const dlVf  = document.getElementById('con2-filter-vf-list');
+  const dlCon = document.getElementById('con2-filter-contractor-list');
+  if (dlVf)  dlVf.innerHTML  = [...vfSet].sort().map(v => `<option value="${esc(v)}"></option>`).join('');
+  if (dlCon) dlCon.innerHTML = [...conSet].sort().map(v => `<option value="${esc(v)}"></option>`).join('');
 }
 
-document.getElementById('con2-filter-vf').addEventListener('change', onCon2FilterChange);
+document.getElementById('con2-filter-vf').addEventListener('input',         onCon2FilterChange);
+document.getElementById('con2-filter-contractor').addEventListener('input',  onCon2FilterChange);
 document.getElementById('btn-con2-clear-filter').addEventListener('click', () => {
-  document.getElementById('con2-filter-vf').value = '';
+  document.getElementById('con2-filter-vf').value         = '';
+  document.getElementById('con2-filter-contractor').value = '';
   onCon2FilterChange();
 });
 
@@ -799,8 +804,13 @@ function onCon2FilterChange() {
 
 function getCon2FilteredGroups() {
   if (!_allRows2) return new Map();
-  const vf = document.getElementById('con2-filter-vf').value.trim();
-  const filtered = _allRows2.filter(r => !vf || r.vfInvoice === vf);
+  const vf  = document.getElementById('con2-filter-vf').value.trim().toLowerCase();
+  const con = document.getElementById('con2-filter-contractor').value.trim().toLowerCase();
+  const filtered = _allRows2.filter(r => {
+    if (vf  && !String(r.vfInvoice  ?? '').toLowerCase().includes(vf))  return false;
+    if (con && !String(r.contractor ?? '').toLowerCase().includes(con)) return false;
+    return true;
+  });
   const groups = new Map();
   for (const row of filtered) {
     if (!groups.has(row.contractor)) groups.set(row.contractor, []);

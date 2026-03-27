@@ -315,10 +315,16 @@
               <div class="fin-filters">
                 <div class="fin-filter-group">
                   <label for="con2-filter-vf">VF Invoice #</label>
-                  <select id="con2-filter-vf"><option value="">-- All --</option></select>
+                  <input type="text" id="con2-filter-vf" list="con2-filter-vf-list" placeholder="-- All --">
+                  <datalist id="con2-filter-vf-list"></datalist>
+                </div>
+                <div class="fin-filter-group">
+                  <label for="con2-filter-contractor">Contractor</label>
+                  <input type="text" id="con2-filter-contractor" list="con2-filter-contractor-list" placeholder="-- All --">
+                  <datalist id="con2-filter-contractor-list"></datalist>
                 </div>
                 <div class="fin-filter-group fin-filter-clear">
-                  <button id="btn-con2-clear-filter" class="btn-secondary">Clear Filter</button>
+                  <button id="btn-con2-clear-filter" class="btn-secondary">Clear Filters</button>
                 </div>
               </div>
 
@@ -389,7 +395,8 @@
               <div class="fin-filters">
                 <div class="fin-filter-group">
                   <label for="con-poc-filter-vf">VF Invoice #</label>
-                  <select id="con-poc-filter-vf"><option value="">-- All --</option></select>
+                  <input type="text" id="con-poc-filter-vf" list="con-poc-filter-vf-list" placeholder="-- All --">
+                  <datalist id="con-poc-filter-vf-list"></datalist>
                 </div>
                 <div class="fin-filter-group fin-filter-clear">
                   <button id="btn-con-poc-clear-filter" class="btn-secondary">Clear Filter</button>
@@ -486,11 +493,13 @@
               <div class="fin-filters">
                 <div class="fin-filter-group">
                   <label for="fin-filter-vf">VF Invoice #</label>
-                  <select id="fin-filter-vf"><option value="">-- All --</option></select>
+                  <input type="text" id="fin-filter-vf" list="fin-filter-vf-list" placeholder="-- All --">
+                  <datalist id="fin-filter-vf-list"></datalist>
                 </div>
                 <div class="fin-filter-group">
                   <label for="fin-filter-con">Contractor Invoice #</label>
-                  <select id="fin-filter-con"><option value="">-- All --</option></select>
+                  <input type="text" id="fin-filter-con" list="fin-filter-con-list" placeholder="-- All --">
+                  <datalist id="fin-filter-con-list"></datalist>
                 </div>
                 <div class="fin-filter-group fin-filter-clear">
                   <button id="btn-fin-clear-filters" class="btn-secondary">Clear Filters</button>
@@ -556,11 +565,13 @@
               <div class="fin-filters">
                 <div class="fin-filter-group">
                   <label for="poc-filter-vf">VF Invoice #</label>
-                  <select id="poc-filter-vf"><option value="">-- All --</option></select>
+                  <input type="text" id="poc-filter-vf" list="poc-filter-vf-list" placeholder="-- All --">
+                  <datalist id="poc-filter-vf-list"></datalist>
                 </div>
                 <div class="fin-filter-group">
                   <label for="poc-filter-con">Contractor Invoice #</label>
-                  <select id="poc-filter-con"><option value="">-- All --</option></select>
+                  <input type="text" id="poc-filter-con" list="poc-filter-con-list" placeholder="-- All --">
+                  <datalist id="poc-filter-con-list"></datalist>
                 </div>
                 <div class="fin-filter-group fin-filter-clear">
                   <button id="btn-poc-clear-filters" class="btn-secondary">Clear Filters</button>

@@ -23,7 +23,7 @@ All logic lives in four files loaded by `index.html` as plain `<script>` tags:
 
 All app files are wrapped in IIFEs to avoid global namespace collisions. They share two CDN libraries loaded in `index.html`:
 - **SheetJS** (`XLSX`) — reading all Excel formats (.xlsx, .xls, .xlsm, .xlsb, .csv)
-- **ExcelJS** — writing styled Excel output (POC, Contractor, and Finance apps; TSR app uses SheetJS `writeFile`)
+- **ExcelJS** — writing styled Excel output (all four apps; TSR was migrated from SheetJS `writeFile` to ExcelJS to support header styling)
 
 ## Layout (`index.html` + `styles.css`)
 
@@ -116,6 +116,13 @@ Columns are also detected from the TSR header row after it is located. Fallbacks
 5. Financial totals use `newTotal` column, not computed from qty × price
 6. Comparison: `actualQty` (with distance multiplier applied) is compared against TSR remaining qty
 
+### Export (`exportToExcel` — now uses ExcelJS)
+
+- **Row 1:** Column headers — `#0070C0` blue fill, white bold text, centered, thin borders.
+- **Row 1 frozen** — stays visible when scrolling (`ws.views = [{ state: 'frozen', ySplit: 1 }]`).
+- **Rows 2+:** Data rows with thin borders and 11pt font.
+- File downloaded via `URL.createObjectURL` (same pattern as other apps). `exportToExcel` is `async`; the click handler uses `.catch()` for error handling.
+
 ## Contractor App Data Flow (`contractor-app.js`)
 
 The Contractor tab has **three sub-tabs**, each with its own state, file picker, and export logic.
@@ -141,7 +148,7 @@ Reads the same **Tracking file (.xlsm)**.
 - `Contractor Invoice #` is blank
 - Non-In-House contractor
 
-**No date filter.** The VF Invoice # dropdown is the sole filter — user selects an invoice number and all matching rows are grouped by contractor for export.
+**No date filter.** Two interactive combobox filters — VF Invoice # and Contractor — act as AND. Both allow typing (partial, case-insensitive match) or selecting from the dropdown list.
 
 **Amount source:** `Contractor2` column via `parseAmount()`.
 
@@ -197,21 +204,38 @@ Reads the **Tracking file (.xlsm)** (sheet `Invoicing Track`, header row index 3
 
 Reads the **POC3 Tracking file**. Scans for a header row containing `"INST Contractor"`. Each source row generates **two output rows** (Installation + Migration), with `Total Amount ÷ 2` as the `newTotal` for each row.
 
-### Output Columns (both sub-tabs, in order)
+### Output Columns — TX-RF Track (`OUTPUT_COLS`)
 
-| Source Column | Output Label | Header Colour |
+| Source Column | Output Label | Header Colour | Header Font |
+|---|---|---|---|
+| Contractor | Contractor | `#0070C0` blue | white |
+| Job Code | Job Code | `#FFC000` gold | black |
+| Logical Site ID | Site ID | `#FFC000` gold | black |
+| Line Item (col 18) | Line Item | `#00B0F0` light blue | white |
+| LMP | LMP Portion | `#4472C4` medium blue | white |
+| Contractor2 | Contractor Portion | `#4472C4` medium blue | white |
+| New Total | New Total Price | `#C00000` dark red | white |
+| Task Date | Task Date | `#ED7D31` orange | white |
+| VF Invoice # | VF Invoice # | `#2E75B6` steel blue | white |
+| PO Number | PO Number | `#2E75B6` steel blue | white |
+| Contractor Invoice # | Contractor Invoice # | `#FFD700` yellow | black |
+| *(derived)* | Task Type | `#FF0000` red | white |
+
+### Output Columns — POC Tracking (`POC_OUTPUT_COLS`)
+
+Same as TX-RF Track except **Task Date is replaced by two separate date columns**:
+
+| Key | Output Label | Header Colour |
 |---|---|---|
-| Contractor | Contractor | `#0070C0` blue |
-| Job Code | Job Code | `#00B050` green |
-| Logical Site ID | Site ID | `#00B050` green |
-| Line Item (col 18) | Line Item | `#00B0F0` light blue |
-| LMP | LMP Portion | `#4472C4` medium blue |
-| Contractor2 | Contractor Portion | `#4472C4` medium blue |
-| New Total | New Total Price | `#C00000` dark red |
-| Task Date | Task Date | `#ED7D31` orange |
-| VF Invoice # | VF Invoice # | `#2E75B6` steel blue |
-| PO Number | PO Number | `#2E75B6` steel blue |
-| Contractor Invoice # | Contractor Invoice # | `#FFD700` yellow |
+| `installDate` | Installation Date | `#ED7D31` orange |
+| `migrDate` | Migration Date | `#ED7D31` orange |
+
+Both Installation and Migration output rows carry **both** dates (read from the same source row). This avoids ambiguity — the user can always see both dates regardless of which output row they're reading.
+
+**Task Type column (both sub-tabs):**
+- Value is `"New"` if the year ≥ 2026, `"Old"` otherwise.
+- For TX-RF Track: derived from the `Task Date` column of each row.
+- For POC Tracking: **always derived from the Installation Date**, even for the Migration output row. The migration date is irrelevant for this classification.
 
 **Column detection notes:**
 - `Line Item` always hardcoded to col 18 (same as other apps for this file format)
@@ -219,9 +243,10 @@ Reads the **POC3 Tracking file**. Scans for a header row containing `"INST Contr
 - `LMP` exact match (`=== 'lmp'`) preferred; falls back to `includes('lmp')` excluding invoicing/date/status columns
 - **PO Number:** matched with `t.startsWith('po') && !t.includes('portion') && t.includes('ins')` — the `startsWith` + `!includes('portion')` guard is required because "LMP Portion ins" and "Contractor Portion ins" both contain the substring `'po'`, which caused false matches before this fix.
 
-### Export layout (`exportFinance(rows, filename)`)
+### Export layout (`exportFinance(rows, filename, cols)`)
 
-- **Row 1:** Total row — "Total" centred in column D, financial totals in LMP/Contractor/NewTotal columns, green fill across all cells.
+- **`cols` parameter** — optional; defaults to `OUTPUT_COLS`. Pass `POC_OUTPUT_COLS` for the POC Tracking export. Each column definition object carries `{ key, label, fill, font, width }` — widths are stored on the definition, not in a separate array.
+- **Row 1:** Total row — "Total" centred in the Line Item column (located via `findIndex`), financial totals in LMP/Contractor/NewTotal columns, green fill across all cells.
 - **Row 2:** Blank gap row (height 6pt).
 - **Row 3:** Column headers.
 - **Row 4+:** Data rows.
@@ -230,8 +255,14 @@ Reads the **POC3 Tracking file**. Scans for a header row containing `"INST Contr
 
 ### UI Filters
 
-- **TX-RF Track:** VF Invoice # and Contractor Invoice # dropdowns (AND logic).
-- **POC Tracking:** VF Invoice # dropdown only.
+All filter controls are **comboboxes** (`<input type="text" list="...">` + `<datalist>`), not plain `<select>` elements. This lets users both pick from the list and type a partial value for real-time filtering.
+
+- **TX-RF Track:** VF Invoice # and Contractor Invoice # (AND logic).
+- **POC Tracking:** VF Invoice # and Contractor Invoice # (AND logic).
+
+Filter logic uses case-insensitive `includes` (not exact match), so partial strings work. Event listeners use `input` (not `change`) for keystroke-level reactivity.
+
+**Critical — do not add `autocomplete="off"` to filter inputs.** Firefox suppresses datalist suggestions entirely when `autocomplete="off"` is present on the same input, making the dropdown invisible.
 
 Summary stats (row count, New Total Price sum, LMP Portion sum, Contractor Portion sum) update live on filter change for both sub-tabs.
 
@@ -261,4 +292,4 @@ The `formatDate()` function remains in the codebase but is no longer used for Ex
 
 ## Service Worker Cache
 
-When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v6` → `lmp-invoicing-v7`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v7`.
+When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v8` → `lmp-invoicing-v9`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v9`.

@@ -565,28 +565,44 @@ function renderResults(results) {
 // Export to Excel
 // ---------------------------------------------------------------------------
 document.getElementById('btn-export').addEventListener('click', () => {
-  try {
-    exportToExcel();
-  } catch (err) {
+  exportToExcel().catch(err => {
     showExportStatus('\u274c Export failed: ' + err.message, 'error');
-  }
+  });
 });
 
-function exportToExcel() {
+async function exportToExcel() {
   const HEADERS = [
     'VF Task Owner', 'Vendor', 'Logical Site ID', 'Site Option', 'Facing',
     'Task Date', 'Line Item', 'Absolute Quantity', 'PRQ', 'Certificate #',
     'Acceptance Status', 'Actual Quantity', 'New Total Price', 'ID#', 'Job Code', 'Comment'
   ];
-  const COL_WIDTHS = [
-    { wch: 18 }, { wch: 14 }, { wch: 18 }, { wch: 14 }, { wch: 12 },
-    { wch: 14 }, { wch: 60 }, { wch: 18 }, { wch: 10 }, { wch: 16 },
-    { wch: 20 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 14 }, { wch: 14 }
-  ];
+  const COL_WIDTHS = [18, 14, 18, 14, 12, 14, 60, 18, 10, 16, 20, 16, 16, 16, 14, 14];
 
-  const data = [HEADERS];
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'LMP Invoicing System';
+  const ws = wb.addWorksheet('TSR Analysis');
+
+  HEADERS.forEach((_, i) => { ws.getColumn(i + 1).width = COL_WIDTHS[i]; });
+
+  // Header row — blue fill, white bold text
+  const THIN    = { style: 'thin', color: { argb: 'FF000000' } };
+  const ALL_THIN = { top: THIN, left: THIN, bottom: THIN, right: THIN };
+
+  const headerRow = ws.addRow(HEADERS);
+  headerRow.height = 22;
+  headerRow.eachCell(c => {
+    c.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0070C0' } };
+    c.font      = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+    c.alignment = { horizontal: 'center', vertical: 'middle' };
+    c.border    = ALL_THIN;
+  });
+
+  // Freeze the header row
+  ws.views = [{ state: 'frozen', ySplit: 1 }];
+
+  // Data rows
   for (const r of allExportItems) {
-    data.push([
+    const row = ws.addRow([
       r.vfTaskOwner,
       r.vendor,
       r.logicalSiteId,
@@ -604,16 +620,26 @@ function exportToExcel() {
       r.jobCode,
       r.comment
     ]);
+    row.height = 14.4;
+    row.eachCell({ includeEmpty: true }, c => {
+      c.border = ALL_THIN;
+      c.font   = { size: 11 };
+      c.alignment = { vertical: 'middle' };
+    });
   }
 
-  const ws = XLSX.utils.aoa_to_sheet(data);
-  ws['!cols'] = COL_WIDTHS;
-
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'TSR Analysis');
-
   const today = new Date().toISOString().slice(0, 10);
-  XLSX.writeFile(wb, 'TSR_Submission_Results_' + today + '.xlsx');
+  const filename = 'TSR_Submission_Results_' + today + '.xlsx';
+  const buf  = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  });
+  const url = URL.createObjectURL(blob);
+  const a   = Object.assign(document.createElement('a'), { href: url, download: filename });
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 
   const canCount    = allExportItems.filter(r => r.comment === 'Can Submit').length;
   const pendCount   = allExportItems.filter(r => r.comment === 'Pending').length;

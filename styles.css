@@ -1154,19 +1154,23 @@ footer p + p {
   letter-spacing: 0.04em;
 }
 
-.fin-filter-group select {
+.fin-filter-group select,
+.fin-filter-group input[type="text"] {
   padding: 0.45rem 0.75rem;
   border: 1.5px solid #c8d6e8;
   border-radius: 6px;
   background: #fff;
   font-size: 0.95rem;
   color: #1a1a2e;
-  cursor: pointer;
+  cursor: text;
   outline: none;
   transition: border-color 0.15s;
+  width: 100%;
+  box-sizing: border-box;
 }
 
-.fin-filter-group select:focus {
+.fin-filter-group select:focus,
+.fin-filter-group input[type="text"]:focus {
   border-color: #0070C0;
 }
 
