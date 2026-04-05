@@ -91,8 +91,9 @@ Requires **two** files loaded simultaneously before analysis runs:
 | Acceptance Week | `includes('acceptance week')` |
 | New Total | `includes('new total')` |
 | Absolute Quantity | `includes('absolute')` + `includes('qty')` or `includes('quant')` |
+| Status | `=== 'status'` (exact) |
 
-Optional columns (export only, no error if absent): Distance, PO Status, Acceptance Status, VF Task Owner, Vendor, Site Option, Facing, Task Date, PRQ, Certificate, ID#.
+Optional columns (export only, no error if absent): Distance, PO Status, Acceptance Status, VF Task Owner, Vendor, Site Option, Facing, Task Date, PRQ, Certificate, ID#, Comments.
 
 ### Column Detection — TSR File
 
@@ -106,21 +107,46 @@ Columns are also detected from the TSR header row after it is located. Fallbacks
 
 ### Analysis Logic
 
-1. Groups tracking rows by `(JobCode, LogicalSiteId)` combo key, skipping rows where PO Status is filled
-2. Only combos that have at least one FAC Date are "active"
-3. Actual quantity = `Absolute Quantity × distanceMultiplier` (based on distance band column)
-4. Combos are classified into three buckets:
-   - **Can Submit** — all rows in combo have FAC Date + Acceptance Week, AND their actual quantities fit within TSR remaining (greedy first-fit ordered by first Excel row number). Requires `liQtyMap.size > 0` — combos with no readable line items are never auto-passed.
-   - **Pending** — not all rows have FAC Date or Acceptance Week
-   - **Need PO** — all rows ready but TSR has insufficient remaining quantity
-5. Financial totals use `newTotal` column, not computed from qty × price
-6. Comparison: `actualQty` (with distance multiplier applied) is compared against TSR remaining qty
+**Processing order: TSR file is read first**, then the tracking file. The TSR remaining quantities are fully loaded into `tsrMap` before any combo classification begins.
 
-### Export (`exportToExcel` — now uses ExcelJS)
+**Row-level exclusions (applied before grouping):**
+- Rows where PO Status is filled → excluded (already submitted to a PO)
+- Rows where the Comments cell matches `/\buso\d*\b/i` → excluded (USO scope, not invoiced by LMP). Matches `USO`, `uso`, `USO1`, `uso2`, `USO123`, etc. but not words that merely contain "uso" (e.g. "cursor"). Comments column is optional — if not found the check is silently skipped.
+
+**Combo classification** — each (Job Code + Logical Site ID) group is classified using the `Status` column values (`Done`, `Assigned`, `Cancelled`):
+
+| Situation | Classification | Output status |
+|---|---|---|
+| All tasks Cancelled | Excluded silently | — |
+| Any task is `Assigned` | `some_assigned` | **FAC with some items assigned** |
+| All tasks `Done` but some missing FAC Date or Acceptance Week | `some_nfac` | **Some items FAC, some NFAC yet** |
+| All tasks `Done` + all have FAC Date + all have Acceptance Week | `eligible` | enters TSR allocation → **Can Submit** or **Need New PO** |
+
+Notes:
+- Cancelled rows are stripped before any check — a combo with only Done + Cancelled tasks is treated as if the Cancelled rows don't exist
+- A Done task with no FAC Date is treated the same as not-yet-done — it flags the whole combo as `some_nfac`
+- Combos with no readable line items after filtering are assigned **Need New PO**
+
+**Greedy TSR allocation (eligible combos only):**
+1. Eligible combos are sorted by their earliest Excel row number across all their tasks (first-occurrence rule)
+2. For each combo in order: check whether every line item's actual quantity fits within the current TSR available quantity
+3. If all items fit → **Can Submit**; deduct those quantities from TSR available for subsequent combos
+4. If any item does not fit, or the line item is not found in the TSR at all → **Need New PO** for the entire combo (no partial submission)
+
+Actual quantity = `Absolute Quantity × distanceMultiplier` (based on distance band column). Financial totals use the `newTotal` column directly, not computed from qty × price.
+
+**Money totals (summary boxes):**
+- Can Submit → green "Can Submit" box
+- `some_assigned` + `some_nfac` combos → amber "Pending" box
+- Need New PO → red "Need PO" box
+- Cancelled rows contribute nothing to any total
+
+### Export (`exportToExcel` — uses ExcelJS)
 
 - **Row 1:** Column headers — `#0070C0` blue fill, white bold text, centered, thin borders.
 - **Row 1 frozen** — stays visible when scrolling (`ws.views = [{ state: 'frozen', ySplit: 1 }]`).
 - **Rows 2+:** Data rows with thin borders and 11pt font.
+- Export row order: Can Submit → FAC with some items assigned → Some items FAC some NFAC yet → Need New PO.
 - File downloaded via `URL.createObjectURL` (same pattern as other apps). `exportToExcel` is `async`; the click handler uses `.catch()` for error handling.
 
 ## Contractor App Data Flow (`contractor-app.js`)
@@ -292,4 +318,4 @@ The `formatDate()` function remains in the codebase but is no longer used for Ex
 
 ## Service Worker Cache
 
-When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v8` → `lmp-invoicing-v9`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v9`.
+When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v9` → `lmp-invoicing-v10`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v10`.
