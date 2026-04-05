@@ -115,15 +115,79 @@ async function triggerAnalysis() {
 // ---------------------------------------------------------------------------
 function runAnalysis() {
 
+  // ── Step 1: Read TSR file first ──────────────────────────────────────────
+  const tsrSheet = tsrWorkbook.Sheets['Request Form - VF'];
+  if (!tsrSheet) {
+    throw new Error('Wrong file loaded in TSR. Expected sheet: Request Form - VF');
+  }
+
+  const tsrRows = XLSX.utils.sheet_to_json(tsrSheet, { header: 1, defval: null });
+
+  let tsrHeaderRowIdx = -1;
+  for (let i = 0; i < tsrRows.length; i++) {
+    const row = tsrRows[i];
+    for (let c = 0; c < row.length; c++) {
+      if (row[c] && row[c].toString().toLowerCase().includes('item description')) {
+        tsrHeaderRowIdx = i;
+        break;
+      }
+    }
+    if (tsrHeaderRowIdx >= 0) break;
+  }
+
+  let tsrItemColIndex      = -1;
+  let tsrUnitPriceColIndex = -1;
+  let tsrRemainingColIndex = -1;
+
+  if (tsrHeaderRowIdx >= 0) {
+    const tsrHeader = tsrRows[tsrHeaderRowIdx];
+    for (let c = 0; c < tsrHeader.length; c++) {
+      const h = (tsrHeader[c] ?? '').toString().trim().toLowerCase();
+      if (tsrItemColIndex      < 0 && h.includes('item description'))                   tsrItemColIndex      = c;
+      if (tsrUnitPriceColIndex < 0 && h.includes('unit price'))                         tsrUnitPriceColIndex = c;
+      if (tsrRemainingColIndex < 0 && h.includes('remaining') && !h.includes('after')) tsrRemainingColIndex = c;
+    }
+  }
+
+  if (tsrItemColIndex      < 0) tsrItemColIndex      = 6;
+  if (tsrUnitPriceColIndex < 0) tsrUnitPriceColIndex = 12;
+  if (tsrRemainingColIndex < 0) tsrRemainingColIndex = 50;
+
+  // tsrMap: canonical item name → { remaining, unitPrice }
+  const tsrMap = new Map();
+  if (tsrHeaderRowIdx >= 0) {
+    for (let i = tsrHeaderRowIdx + 1; i < tsrRows.length; i++) {
+      const itemDesc = tsrRows[i][tsrItemColIndex];
+      if (itemDesc == null || itemDesc === '') continue;
+      const remaining = tsrRows[i][tsrRemainingColIndex];
+      const unitPrice = tsrRows[i][tsrUnitPriceColIndex];
+      if (remaining == null || remaining === '' || Number(remaining) <= 0) continue;
+      if (unitPrice == null || unitPrice === '') continue;
+      tsrMap.set(itemDesc.toString().trim(), {
+        remaining: Number(remaining),
+        unitPrice: Number(unitPrice)
+      });
+    }
+  }
+
+  // Resolve a tracking line item name to its canonical TSR key (fuzzy match)
+  function tsrKey(lineItem) {
+    if (tsrMap.has(lineItem)) return lineItem;
+    for (const key of tsrMap.keys()) {
+      if (key.includes(lineItem) || lineItem.includes(key)) return key;
+    }
+    return null;
+  }
+
+  // ── Step 2: Read tracking file ───────────────────────────────────────────
   const trackingSheet = trackingWorkbook.Sheets['Invoicing Track'];
   if (!trackingSheet) {
     throw new Error('Wrong file loaded in Task Tracking. Expected sheet: Invoicing Track');
   }
 
   const trackingRows = XLSX.utils.sheet_to_json(trackingSheet, { header: 1, defval: null });
-
-  const dataRows  = trackingRows.slice(4);
-  const headerRow = trackingRows[3] ?? [];
+  const dataRows     = trackingRows.slice(4);
+  const headerRow    = trackingRows[3] ?? [];
 
   let idColIndex               = -1;
   let jobCodeColIndex          = -1;
@@ -143,40 +207,41 @@ function runAnalysis() {
   let facDateColIndex          = -1;
   let acceptanceWeekColIndex   = -1;
   let poStatusColIndex         = -1;
+  let statusColIndex           = -1;
 
   for (let c = 0; c < headerRow.length; c++) {
     const h = (headerRow[c] ?? '').toString().trim().toLowerCase();
-    // Use first-match for every column so a later unrelated column can't override the correct one
-    if (idColIndex               < 0 && (h === 'id#' || h === 'id #'))                              idColIndex               = c;
-    if (jobCodeColIndex          < 0 && h.includes('job code'))                                      jobCodeColIndex          = c;
-    if (logicalSiteColIndex      < 0 && h.includes('logical site'))                                  logicalSiteColIndex      = c;
-    if (acceptanceStatusColIndex < 0 && h.includes('acceptance status'))                             acceptanceStatusColIndex = c;
-    if (newTotalColIndex         < 0 && h.includes('new total'))                                     newTotalColIndex         = c;
-    if (vfTaskOwnerColIndex      < 0 && h.includes('task owner'))                                    vfTaskOwnerColIndex      = c;
-    if (vendorColIndex           < 0 && (h === 'vendor' || h.includes('vendor')))                   vendorColIndex           = c;
-    if (siteOptionColIndex       < 0 && h.includes('site option'))                                   siteOptionColIndex       = c;
-    if (facingColIndex           < 0 && (h === 'facing' || h.includes('facing')))                   facingColIndex           = c;
-    if (taskDateColIndex         < 0 && h.includes('task date'))                                     taskDateColIndex         = c;
-    if (prqColIndex              < 0 && (h === 'prq' || h.includes('prq')))                         prqColIndex              = c;
-    if (certificateColIndex      < 0 && h.includes('certificate'))                                   certificateColIndex      = c;
-    if (distanceColIndex         < 0 && h.includes('distance'))                                      distanceColIndex         = c;
-    if (absQtyColIndex           < 0 && h.includes('absolute') && (h.includes('qty') || h.includes('quant'))) absQtyColIndex = c;
-    if (lineItemColIndex         < 0 && (h === 'line item' || h === 'line items'))                  lineItemColIndex         = c;
-    if (facDateColIndex          < 0 && (h.includes('fac date') || h === 'fac'))                    facDateColIndex          = c;
-    if (acceptanceWeekColIndex   < 0 && h.includes('acceptance week'))                               acceptanceWeekColIndex   = c;
+    if (idColIndex               < 0 && (h === 'id#' || h === 'id #'))                                         idColIndex               = c;
+    if (jobCodeColIndex          < 0 && h.includes('job code'))                                                 jobCodeColIndex          = c;
+    if (logicalSiteColIndex      < 0 && h.includes('logical site'))                                             logicalSiteColIndex      = c;
+    if (acceptanceStatusColIndex < 0 && h.includes('acceptance status'))                                        acceptanceStatusColIndex = c;
+    if (newTotalColIndex         < 0 && h.includes('new total'))                                                newTotalColIndex         = c;
+    if (vfTaskOwnerColIndex      < 0 && h.includes('task owner'))                                               vfTaskOwnerColIndex      = c;
+    if (vendorColIndex           < 0 && (h === 'vendor' || h.includes('vendor')))                              vendorColIndex           = c;
+    if (siteOptionColIndex       < 0 && h.includes('site option'))                                              siteOptionColIndex       = c;
+    if (facingColIndex           < 0 && (h === 'facing' || h.includes('facing')))                              facingColIndex           = c;
+    if (taskDateColIndex         < 0 && h.includes('task date'))                                                taskDateColIndex         = c;
+    if (prqColIndex              < 0 && (h === 'prq' || h.includes('prq')))                                    prqColIndex              = c;
+    if (certificateColIndex      < 0 && h.includes('certificate'))                                              certificateColIndex      = c;
+    if (distanceColIndex         < 0 && h.includes('distance'))                                                 distanceColIndex         = c;
+    if (absQtyColIndex           < 0 && h.includes('absolute') && (h.includes('qty') || h.includes('quant'))) absQtyColIndex           = c;
+    if (lineItemColIndex         < 0 && (h === 'line item' || h === 'line items'))                             lineItemColIndex         = c;
+    if (facDateColIndex          < 0 && (h.includes('fac date') || h === 'fac'))                               facDateColIndex          = c;
+    if (acceptanceWeekColIndex   < 0 && h.includes('acceptance week'))                                         acceptanceWeekColIndex   = c;
     if (poStatusColIndex         < 0 && (h.includes('po status') || h.includes('po #')
-                                      || h.includes('purchase order')))                              poStatusColIndex         = c;
+                                      || h.includes('purchase order')))                                         poStatusColIndex         = c;
+    if (statusColIndex           < 0 && h === 'status')                                                        statusColIndex           = c;
   }
 
-  // Validate all critical columns were found
   const missingCols = [];
-  if (jobCodeColIndex          < 0) missingCols.push('"Job Code"');
-  if (logicalSiteColIndex      < 0) missingCols.push('"Logical Site ID"');
-  if (lineItemColIndex         < 0) missingCols.push('"Line Item"');
-  if (facDateColIndex          < 0) missingCols.push('"FAC Date"');
-  if (acceptanceWeekColIndex   < 0) missingCols.push('"Acceptance Week"');
-  if (newTotalColIndex         < 0) missingCols.push('"New Total"');
-  if (absQtyColIndex           < 0) missingCols.push('"Absolute Quantity"');
+  if (jobCodeColIndex        < 0) missingCols.push('"Job Code"');
+  if (logicalSiteColIndex    < 0) missingCols.push('"Logical Site ID"');
+  if (lineItemColIndex       < 0) missingCols.push('"Line Item"');
+  if (facDateColIndex        < 0) missingCols.push('"FAC Date"');
+  if (acceptanceWeekColIndex < 0) missingCols.push('"Acceptance Week"');
+  if (newTotalColIndex       < 0) missingCols.push('"New Total"');
+  if (absQtyColIndex         < 0) missingCols.push('"Absolute Quantity"');
+  if (statusColIndex         < 0) missingCols.push('"Status"');
 
   if (missingCols.length > 0) {
     const foundHeaders = headerRow
@@ -188,6 +253,17 @@ function runAnalysis() {
     );
   }
 
+  // Returns 'done' | 'cancelled' | 'assigned' | 'unknown'
+  function taskStatus(row) {
+    const s = (row[statusColIndex] ?? '').toString().trim().toLowerCase();
+    if (s === 'cancelled' || s === 'canceled') return 'cancelled';
+    if (s === 'assigned')                       return 'assigned';
+    if (s === 'done')                           return 'done';
+    return 'unknown';
+  }
+
+  // ── Step 3: Group rows by (Job Code + Logical Site ID) combo ─────────────
+  // Exclude rows where PO Status is already filled (already submitted)
   const comboRows = new Map();
   dataRows.forEach((row, idx) => {
     if (row[poStatusColIndex] != null && row[poStatusColIndex] !== '') return;
@@ -197,22 +273,132 @@ function runAnalysis() {
     comboRows.get(combo).push({ row, rowIndex: idx });
   });
 
-  const activeCombos = new Map();
+  // ── Step 4: Classify each combo ──────────────────────────────────────────
+  //
+  // Combo statuses:
+  //   'eligible'      — all non-cancelled tasks are Done + FAC + Acceptance Week
+  //                     → enters TSR allocation (becomes 'Can Submit' or 'Need New PO')
+  //   'some_assigned' — at least one non-cancelled task is Assigned
+  //                     → output: "FAC with some items assigned"
+  //   'some_nfac'     — all non-cancelled tasks are Done but some lack FAC date
+  //                     or Acceptance Week
+  //                     → output: "Some items FAC, some NFAC yet"
+  //   (omitted)       — all tasks Cancelled → excluded silently
+  //
+  const comboClassification = new Map(); // combo → 'eligible' | 'some_assigned' | 'some_nfac'
+  const eligibleCombos      = [];        // combos that enter TSR allocation, ordered later by first row
+
   comboRows.forEach((entries, combo) => {
-    if (entries.some(({ row }) => row[facDateColIndex] != null && row[facDateColIndex] !== '')) {
-      activeCombos.set(combo, entries);
+    // Filter out Cancelled rows — they are treated as non-existent
+    const active = entries.filter(({ row }) => taskStatus(row) !== 'cancelled');
+
+    // All tasks cancelled → exclude combo entirely
+    if (active.length === 0) return;
+
+    // Any Assigned task → combo is pending, skip TSR allocation
+    if (active.some(({ row }) => taskStatus(row) === 'assigned')) {
+      comboClassification.set(combo, 'some_assigned');
+      return;
     }
+
+    // All remaining are Done — check FAC Date and Acceptance Week for every row
+    const allFac     = active.every(({ row }) => row[facDateColIndex] != null && row[facDateColIndex] !== '');
+    const allAccWeek = active.every(({ row }) => row[acceptanceWeekColIndex] != null && row[acceptanceWeekColIndex] !== '');
+
+    if (!allFac || !allAccWeek) {
+      comboClassification.set(combo, 'some_nfac');
+      return;
+    }
+
+    // All Done, all FAC, all Acceptance Week → eligible for TSR allocation
+    comboClassification.set(combo, 'eligible');
+    eligibleCombos.push(combo);
   });
 
-  if (activeCombos.size === 0) {
-    throw new Error('No sites found with FAC Date. Check that FAC Date is filled and PO Status is empty.');
+  if (comboClassification.size === 0) {
+    throw new Error(
+      'No valid sites found after classification. ' +
+      'Ensure the Status column contains "Done", "Assigned", or "Cancelled" and that PO Status is empty.'
+    );
   }
 
+  // ── Step 5: Build per-combo quantities for TSR allocation ─────────────────
+  // Sort eligible combos by their earliest Excel row number (first-occurrence rule)
+  const comboFirstRow    = new Map();
+  const comboLineItemQty = new Map(); // combo → Map(lineItem → actualQty)
+
+  for (const combo of eligibleCombos) {
+    const entries  = comboRows.get(combo);
+    let   minRow   = Infinity;
+    const liQtyMap = new Map();
+
+    for (const { row, rowIndex } of entries) {
+      if (taskStatus(row) === 'cancelled') continue;
+      const excelRow = rowIndex + 5;
+      if (excelRow < minRow) minRow = excelRow;
+      const li = (row[lineItemColIndex] ?? '').toString().trim();
+      if (!li) continue;
+      const distance  = (row[distanceColIndex] ?? '').toString().trim();
+      const absQty    = Number(row[absQtyColIndex] ?? 1);
+      const actualQty = absQty * (distanceMultipliers[distance] ?? 1.0);
+      liQtyMap.set(li, (liQtyMap.get(li) ?? 0) + actualQty);
+    }
+
+    comboFirstRow.set(combo, minRow);
+    comboLineItemQty.set(combo, liQtyMap);
+  }
+
+  // Sort by first row ascending → earlier sites get priority in TSR allocation
+  eligibleCombos.sort((a, b) => comboFirstRow.get(a) - comboFirstRow.get(b));
+
+  // ── Step 6: Greedy TSR allocation ─────────────────────────────────────────
+  // For each line item, start with the TSR remaining quantity.
+  // Process eligible combos in first-row order: if all of a combo's line items
+  // fit in the remaining TSR quantities, mark it "Can Submit" and deduct.
+  // Otherwise mark it "Need New PO". A single line item not fitting fails the whole combo.
+  const tsrAvailable = new Map(); // canonical TSR key → available qty
+  for (const [key, data] of tsrMap) {
+    tsrAvailable.set(key, data.remaining);
+  }
+
+  const canSubmitCombos = new Set();
+  const needPoCombos    = new Set();
+
+  for (const combo of eligibleCombos) {
+    const liQtyMap = comboLineItemQty.get(combo);
+
+    // No readable line items → cannot submit (data issue)
+    if (liQtyMap.size === 0) { needPoCombos.add(combo); continue; }
+
+    let canFit = true;
+    for (const [li, qty] of liQtyMap) {
+      const canonKey = tsrKey(li);
+      // Line item not found in TSR at all → Need New PO
+      if (canonKey === null) { canFit = false; break; }
+      const available = tsrAvailable.get(canonKey);
+      if (available === undefined || qty > available + 0.005) { canFit = false; break; }
+    }
+
+    if (canFit) {
+      // Deduct this combo's quantities from TSR available
+      for (const [li, qty] of liQtyMap) {
+        const canonKey = tsrKey(li);
+        tsrAvailable.set(canonKey, tsrAvailable.get(canonKey) - qty);
+      }
+      canSubmitCombos.add(combo);
+    } else {
+      needPoCombos.add(combo);
+    }
+  }
+
+  // ── Step 7: Build summary results (line-item view for the TSR table) ──────
+  // Include only combos that went through TSR allocation (can submit + need new PO)
   const groups = new Map();
-  activeCombos.forEach((entries) => {
+  comboRows.forEach((entries, combo) => {
+    if (!canSubmitCombos.has(combo) && !needPoCombos.has(combo)) return;
     entries.forEach(({ row, rowIndex }) => {
-      if (row[facDateColIndex] == null || row[facDateColIndex] === '') return;
-      const lineItem  = (row[lineItemColIndex] ?? '').toString().trim();
+      if (taskStatus(row) === 'cancelled') return;
+      const lineItem = (row[lineItemColIndex] ?? '').toString().trim();
       if (!lineItem) return;
       const distance  = (row[distanceColIndex] ?? '').toString().trim();
       const absQty    = Number(row[absQtyColIndex] ?? 1);
@@ -233,191 +419,37 @@ function runAnalysis() {
     });
   });
 
-  if (groups.size === 0) {
-    const sample = [];
-    activeCombos.forEach((entries) => {
-      if (sample.length >= 3) return;
-      entries.forEach(({ row }) => {
-        if (sample.length >= 3) return;
-        if (row[facDateColIndex] == null || row[facDateColIndex] === '') return;
-        sample.push(
-          'lineItem col' + lineItemColIndex + '="' + (row[lineItemColIndex] ?? 'NULL') + '"' +
-          ' facDate col' + facDateColIndex + '="' + (row[facDateColIndex] ?? 'NULL') + '"'
-        );
-      });
-    });
-    throw new Error(
-      'No line items could be read for FAC-dated rows. ' +
-      'lineItemCol=' + lineItemColIndex + ', facDateCol=' + facDateColIndex + '. ' +
-      'Sample FAC-dated rows: [ ' + (sample.join(' | ') || 'none') + ' ]'
-    );
-  }
-
-  const tsrSheet = tsrWorkbook.Sheets['Request Form - VF'];
-  if (!tsrSheet) {
-    throw new Error('Wrong file loaded in TSR. Expected sheet: Request Form - VF');
-  }
-
-  const tsrRows = XLSX.utils.sheet_to_json(tsrSheet, { header: 1, defval: null });
-
-  let headerRowIdx = -1;
-  for (let i = 0; i < tsrRows.length; i++) {
-    const row = tsrRows[i];
-    for (let c = 0; c < row.length; c++) {
-      if (row[c] && row[c].toString().toLowerCase().includes('item description')) {
-        headerRowIdx = i;
-        break;
-      }
-    }
-    if (headerRowIdx >= 0) break;
-  }
-
-  // Detect TSR column positions from the header row
-  let tsrItemColIndex      = -1;
-  let tsrUnitPriceColIndex = -1;
-  let tsrRemainingColIndex = -1;
-
-  if (headerRowIdx >= 0) {
-    const tsrHeader = tsrRows[headerRowIdx];
-    for (let c = 0; c < tsrHeader.length; c++) {
-      const h = (tsrHeader[c] ?? '').toString().trim().toLowerCase();
-      if (tsrItemColIndex      < 0 && h.includes('item description'))                       tsrItemColIndex      = c;
-      if (tsrUnitPriceColIndex < 0 && h.includes('unit price'))                             tsrUnitPriceColIndex = c;
-      if (tsrRemainingColIndex < 0 && h.includes('remaining') && !h.includes('after'))     tsrRemainingColIndex = c;
-    }
-  }
-
-  // Fall back to original hardcoded positions if headers not found
-  if (tsrItemColIndex      < 0) tsrItemColIndex      = 6;
-  if (tsrUnitPriceColIndex < 0) tsrUnitPriceColIndex = 12;
-  if (tsrRemainingColIndex < 0) tsrRemainingColIndex = 50;
-
-  const tsrMap = new Map();
-  if (headerRowIdx >= 0) {
-    for (let i = headerRowIdx + 1; i < tsrRows.length; i++) {
-      const itemDesc = tsrRows[i][tsrItemColIndex];
-      if (itemDesc == null || itemDesc === '') continue;
-      const remaining = tsrRows[i][tsrRemainingColIndex];
-      const unitPrice = tsrRows[i][tsrUnitPriceColIndex];
-      if (remaining == null || remaining === '' || Number(remaining) <= 0) continue;
-      if (unitPrice == null || unitPrice === '') continue;
-      tsrMap.set(itemDesc.toString().trim(), {
-        remaining: Number(remaining),
-        unitPrice: Number(unitPrice)
-      });
-    }
-  }
-
   const results = [];
-
   for (const [lineItem, g] of groups) {
-    let tsrEntry = tsrMap.get(lineItem);
-    if (tsrEntry === undefined) {
-      for (const [key, val] of tsrMap) {
-        if (key.includes(lineItem) || lineItem.includes(key)) {
-          tsrEntry = val;
-          break;
-        }
-      }
-    }
-
+    const canonKey     = tsrKey(lineItem);
+    const tsrEntry     = canonKey !== null ? tsrMap.get(canonKey) : undefined;
     const trackingQty  = Math.round(g.totalQty * 100) / 100;
     const tsrRemaining = tsrEntry !== undefined ? tsrEntry.remaining : null;
     const tsrUnitPrice = tsrEntry !== undefined ? tsrEntry.unitPrice : null;
     const difference   = tsrRemaining !== null ? tsrRemaining - trackingQty : null;
 
     let status;
-    if (tsrRemaining === null)             status = 'NOT_FOUND';
-    else if (trackingQty <= tsrRemaining)  status = 'OK';
-    else                                   status = 'EXCEEDS';
+    if (tsrRemaining === null)            status = 'NOT_FOUND';
+    else if (trackingQty <= tsrRemaining) status = 'OK';
+    else                                  status = 'EXCEEDS';
+
+    // Remaining in TSR after all can-submit deductions
+    const afterQty = canonKey !== null ? (tsrAvailable.get(canonKey) ?? tsrRemaining) : null;
 
     results.push({
       lineItem, trackingQty, tsrRemaining, tsrUnitPrice, difference, status,
       excelRowNumbers: g.excelRowNumbers,
       individualQtys:  g.individualQtys,
       facDates:        g.facDates,
-      acceptanceWeeks: g.acceptanceWeeks
+      acceptanceWeeks: g.acceptanceWeeks,
+      tsrAfterSubmit:  afterQty !== null ? Math.round(afterQty * 100) / 100 : null,
+      tsrEgpUnitRate:  tsrUnitPrice !== null ? Math.round(tsrUnitPrice * 100) / 100 : null,
+      tsrAfterAmount:  (tsrUnitPrice !== null && afterQty !== null)
+                         ? Math.round(afterQty * tsrUnitPrice * 100) / 100 : null
     });
   }
 
-  const needPoCombos    = new Set();
-  const pendingCombos   = new Set();
-  const canSubmitCombos = new Set();
-
-  const canSubmitCandidates = [];
-  activeCombos.forEach((entries, combo) => {
-    const facEntries           = entries.filter(({ row }) => row[facDateColIndex] != null && row[facDateColIndex] !== '');
-    const allFac               = entries.every(({ row }) => row[facDateColIndex] != null && row[facDateColIndex] !== '');
-    const allFacHaveAcceptWeek = facEntries.every(({ row }) => row[acceptanceWeekColIndex] != null && row[acceptanceWeekColIndex] !== '');
-    if (!allFac || !allFacHaveAcceptWeek) {
-      pendingCombos.add(combo);
-    } else {
-      canSubmitCandidates.push(combo);
-    }
-  });
-
-  const comboFirstRow    = new Map();
-  const comboLineItemQty = new Map();
-
-  for (const combo of canSubmitCandidates) {
-    const entries  = activeCombos.get(combo);
-    let minRow     = Infinity;
-    const liQtyMap = new Map();
-
-    for (const { row, rowIndex } of entries) {
-      const excelRow = rowIndex + 5;
-      if (excelRow < minRow) minRow = excelRow;
-      if (row[facDateColIndex] == null || row[facDateColIndex] === '') continue;
-      const li = (row[lineItemColIndex] ?? '').toString().trim();
-      if (!li) continue;
-      const distance  = (row[distanceColIndex] ?? '').toString().trim();
-      const absQty    = Number(row[absQtyColIndex] ?? 1);
-      const actualQty = absQty * (distanceMultipliers[distance] ?? 1.0);
-      liQtyMap.set(li, (liQtyMap.get(li) ?? 0) + actualQty);
-    }
-
-    comboFirstRow.set(combo, minRow);
-    comboLineItemQty.set(combo, liQtyMap);
-  }
-
-  canSubmitCandidates.sort((a, b) => comboFirstRow.get(a) - comboFirstRow.get(b));
-
-  const tsrAvailable = new Map();
-  for (const r of results) {
-    if (r.tsrRemaining !== null) tsrAvailable.set(r.lineItem, r.tsrRemaining);
-  }
-
-  for (const combo of canSubmitCandidates) {
-    const liQtyMap = comboLineItemQty.get(combo);
-    let canFit = true;
-
-    for (const [li, qty] of liQtyMap) {
-      const available = tsrAvailable.get(li);
-      if (available === undefined || qty > available + 0.005) { canFit = false; break; }
-    }
-
-    if (canFit && liQtyMap.size > 0) {
-      for (const [li, qty] of liQtyMap) tsrAvailable.set(li, tsrAvailable.get(li) - qty);
-      canSubmitCombos.add(combo);
-    } else {
-      needPoCombos.add(combo);
-    }
-  }
-
-  for (const r of results) {
-    if (r.tsrRemaining === null) {
-      r.tsrAfterSubmit = null;
-      r.tsrAfterAmount = null;
-      r.tsrEgpUnitRate = null;
-      continue;
-    }
-    r.tsrAfterSubmit = Math.round((tsrAvailable.get(r.lineItem) ?? r.tsrRemaining) * 100) / 100;
-    r.tsrEgpUnitRate = r.tsrUnitPrice !== null ? Math.round(r.tsrUnitPrice * 100) / 100 : null;
-    r.tsrAfterAmount = (r.tsrUnitPrice !== null)
-      ? Math.round(r.tsrAfterSubmit * r.tsrUnitPrice * 100) / 100
-      : null;
-  }
-
+  // ── Step 8: Build export rows ─────────────────────────────────────────────
   function makeExportRow(row, comment) {
     const distance  = (row[distanceColIndex] ?? '').toString().trim();
     const absQty    = Number(row[absQtyColIndex] ?? 1);
@@ -445,27 +477,40 @@ function runAnalysis() {
 
   allExportItems = [];
 
-  activeCombos.forEach((entries, combo) => {
+  // Order: Can Submit → FAC with some items assigned → Some items FAC some NFAC yet → Need New PO
+  comboRows.forEach((entries, combo) => {
     if (!canSubmitCombos.has(combo)) return;
     entries.forEach(({ row }) => {
+      if (taskStatus(row) === 'cancelled') return;
       if ((row[lineItemColIndex] ?? '').toString().trim() === '') return;
       allExportItems.push(makeExportRow(row, 'Can Submit'));
     });
   });
 
-  activeCombos.forEach((entries, combo) => {
-    if (!pendingCombos.has(combo)) return;
+  comboRows.forEach((entries, combo) => {
+    if (comboClassification.get(combo) !== 'some_assigned') return;
     entries.forEach(({ row }) => {
+      if (taskStatus(row) === 'cancelled') return;
       if ((row[lineItemColIndex] ?? '').toString().trim() === '') return;
-      allExportItems.push(makeExportRow(row, 'Pending'));
+      allExportItems.push(makeExportRow(row, 'FAC with some items assigned'));
     });
   });
 
-  activeCombos.forEach((entries, combo) => {
+  comboRows.forEach((entries, combo) => {
+    if (comboClassification.get(combo) !== 'some_nfac') return;
+    entries.forEach(({ row }) => {
+      if (taskStatus(row) === 'cancelled') return;
+      if ((row[lineItemColIndex] ?? '').toString().trim() === '') return;
+      allExportItems.push(makeExportRow(row, 'Some items FAC, some NFAC yet'));
+    });
+  });
+
+  comboRows.forEach((entries, combo) => {
     if (!needPoCombos.has(combo)) return;
     entries.forEach(({ row }) => {
+      if (taskStatus(row) === 'cancelled') return;
       if ((row[lineItemColIndex] ?? '').toString().trim() === '') return;
-      allExportItems.push(makeExportRow(row, 'Need PO'));
+      allExportItems.push(makeExportRow(row, 'Need New PO'));
     });
   });
 
@@ -474,17 +519,26 @@ function runAnalysis() {
     return s !== 0 ? s : a.jobCode.localeCompare(b.jobCode);
   });
 
+  // ── Step 9: Money totals ──────────────────────────────────────────────────
+  // Can Submit → moneyCanSubmit
+  // FAC with some items assigned + Some items FAC some NFAC yet → moneyPending
+  // Need New PO → moneyNeedPo
+  // Cancelled rows are excluded from all totals
   moneyCanSubmit = 0;
   moneyPending   = 0;
   moneyNeedPo    = 0;
-  activeCombos.forEach((entries, combo) => {
+
+  comboRows.forEach((entries, combo) => {
+    const cls = comboClassification.get(combo);
+    if (!cls) return; // all-cancelled combo, not in map
     entries.forEach(({ row }) => {
+      if (taskStatus(row) === 'cancelled') return;
       const val    = newTotalColIndex >= 0 ? row[newTotalColIndex] : null;
       const amount = (val != null && val !== '') ? (Number(val) || 0) : 0;
       if (amount === 0) return;
-      if (canSubmitCombos.has(combo))    moneyCanSubmit += amount;
-      else if (pendingCombos.has(combo)) moneyPending   += amount;
-      else if (needPoCombos.has(combo))  moneyNeedPo    += amount;
+      if (canSubmitCombos.has(combo))      moneyCanSubmit += amount;
+      else if (needPoCombos.has(combo))    moneyNeedPo    += amount;
+      else                                 moneyPending   += amount;
     });
   });
 
@@ -641,12 +695,16 @@ async function exportToExcel() {
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 
-  const canCount    = allExportItems.filter(r => r.comment === 'Can Submit').length;
-  const pendCount   = allExportItems.filter(r => r.comment === 'Pending').length;
-  const needPoCount = allExportItems.filter(r => r.comment === 'Need PO').length;
+  const canCount      = allExportItems.filter(r => r.comment === 'Can Submit').length;
+  const assignedCount = allExportItems.filter(r => r.comment === 'FAC with some items assigned').length;
+  const nfacCount     = allExportItems.filter(r => r.comment === 'Some items FAC, some NFAC yet').length;
+  const needPoCount   = allExportItems.filter(r => r.comment === 'Need New PO').length;
   showExportStatus(
     '\u2705 Export downloaded! ' +
-    canCount + ' can submit, ' + pendCount + ' pending, ' + needPoCount + ' need PO.',
+    canCount + ' can submit, ' +
+    assignedCount + ' FAC/assigned, ' +
+    nfacCount + ' some NFAC, ' +
+    needPoCount + ' need new PO.',
     'success'
   );
 }
