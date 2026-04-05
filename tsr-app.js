@@ -208,6 +208,7 @@ function runAnalysis() {
   let acceptanceWeekColIndex   = -1;
   let poStatusColIndex         = -1;
   let statusColIndex           = -1;
+  let commentsColIndex         = -1;
 
   for (let c = 0; c < headerRow.length; c++) {
     const h = (headerRow[c] ?? '').toString().trim().toLowerCase();
@@ -231,6 +232,7 @@ function runAnalysis() {
     if (poStatusColIndex         < 0 && (h.includes('po status') || h.includes('po #')
                                       || h.includes('purchase order')))                                         poStatusColIndex         = c;
     if (statusColIndex           < 0 && h === 'status')                                                        statusColIndex           = c;
+    if (commentsColIndex         < 0 && (h === 'comments' || h === 'comment'))                                  commentsColIndex         = c;
   }
 
   const missingCols = [];
@@ -262,11 +264,22 @@ function runAnalysis() {
     return 'unknown';
   }
 
+  // Returns true if the Comments cell contains "USO" (alone or with numbers, any case)
+  // Matches: USO, uso, Uso, USO1, uso2, USO123, etc. but not unrelated words like "cursor"
+  const USO_RE = /\buso\d*\b/i;
+  function isUSORow(row) {
+    if (commentsColIndex < 0) return false;
+    const comment = (row[commentsColIndex] ?? '').toString().trim();
+    return USO_RE.test(comment);
+  }
+
   // ── Step 3: Group rows by (Job Code + Logical Site ID) combo ─────────────
   // Exclude rows where PO Status is already filled (already submitted)
+  // Exclude rows whose Comments cell contains USO (in any case/number variation)
   const comboRows = new Map();
   dataRows.forEach((row, idx) => {
     if (row[poStatusColIndex] != null && row[poStatusColIndex] !== '') return;
+    if (isUSORow(row)) return;
     const combo = comboKey(row, jobCodeColIndex, logicalSiteColIndex);
     if (combo === '|') return;
     if (!comboRows.has(combo)) comboRows.set(combo, []);
