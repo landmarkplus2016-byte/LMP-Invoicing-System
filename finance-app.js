@@ -108,7 +108,7 @@
       if (cm.siteId     === undefined && t.includes('logical site'))          cm.siteId     = i;
       if (cm.newTotal   === undefined && t.includes('new total'))             cm.newTotal   = i;
       if (cm.taskDate   === undefined && t.includes('task date'))             cm.taskDate   = i;
-      if (cm.vfInvoice  === undefined && t.includes('vf invoice'))            cm.vfInvoice  = i;
+      if (cm.vfInvoice  === undefined && t.includes('vf invoice') && !t.includes('date'))  cm.vfInvoice  = i;
       if (cm.poNumber   === undefined &&
           (t.includes('po number') || t.includes('po no') || t === 'po'))    cm.poNumber   = i;
       if (cm.conInvoice === undefined && t.includes('contractor invoice'))    cm.conInvoice = i;

@@ -734,7 +734,7 @@ function extractCon2Rows() {
     if (t.includes('logical site'))                                                  cSite        = i;
     if ((t === 'facing' || t.includes('facing')) && !t.includes('re'))              cFacing      = i;
     if (t.includes('contractor invoice'))                                            cConInv      = i;
-    if (t.includes('vf invoice'))                                                    cVfInvoice   = i;
+    if (t.includes('vf invoice') && !t.includes('date'))                            cVfInvoice   = i;
     // Contractor2 must be matched before Contractor to avoid false match
     if (cContractor2 === -1 && t.includes('contractor') && t.includes('2') && !t.includes('invoice'))
                                                                                      cContractor2 = i;
