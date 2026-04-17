@@ -16,7 +16,7 @@ All logic lives in four files loaded by `index.html` as plain `<script>` tags:
 |---|---|
 | `poc-app.js` | POC Invoice Prep — reads one Excel file, filters rows, exports styled XLSX |
 | `tsr-app.js` | TSR Submission Checker — reads two Excel files, cross-references them, exports XLSX |
-| `contractor-app.js` | Contractor Invoices — three sub-tabs (2026 Tasks, Pre-2026 Tasks, POC Invoices), generates one styled XLSX per contractor |
+| `contractor-app.js` | Contractor Invoices — four sub-tabs (2026 Tasks, Pre-2026 Tasks, TX-RX Tasks, POC Invoices), generates one styled XLSX per contractor |
 | `finance-app.js` | Finance Sheet — two sub-tabs (TX-RF Track, POC Tracking), filters by invoice numbers, exports styled XLSX |
 | `styles.css` | All styling for all four tabs, sub-tab bars, and shared components |
 | `sw.js` | Service worker — caches app shell for offline use |
@@ -151,7 +151,7 @@ Actual quantity = `Absolute Quantity × distanceMultiplier` (based on distance b
 
 ## Contractor App Data Flow (`contractor-app.js`)
 
-The Contractor tab has **three sub-tabs**, each with its own state, file picker, and export logic.
+The Contractor tab has **four sub-tabs**, each with its own state, file picker, and export logic.
 
 ### Sub-tab 1: 2026 Tasks
 
@@ -180,7 +180,24 @@ Reads the same **Tracking file (.xlsm)**.
 
 State: `_wb2`, `_allRows2`. Entry point: `extractCon2Rows()` → `populateCon2Filter()` → `renderCon2Summary()`.
 
-### Sub-tab 3: POC Invoices
+### Sub-tab 3: TX-RX Tasks
+
+Reads the same **Tracking file (.xlsm)**.
+
+**Filter conditions:**
+- Non-In-House contractor only
+
+**No date filter. No Contractor Invoice # filter** — includes all tasks regardless of whether they have already been invoiced. This makes it a complete view of all contractor work, compared to Pre-2026 which only shows uninvoiced rows.
+
+Two interactive combobox filters — VF Invoice # and Contractor — act as AND.
+
+**Amount source:** `Contractor2` column via `parseAmount()`.
+
+State: `_wbTxRx`, `_allRowsTxRx`. Entry point: `extractTxRxRows()` → `populateTxRxFilter()` → `renderTxRxSummary()`.
+
+All element IDs use the `contxrx-*` prefix to avoid collision with Pre-2026 (`con2-*`) IDs.
+
+### Sub-tab 4: POC Invoices
 
 Reads the **POC3 Tracking file** (same format as Finance Sheet POC Tracking sub-tab). Scans for a header row containing `"inst contractor"` (case-insensitive).
 
@@ -199,7 +216,7 @@ State: `_wbPocCon`, `_allRowsPocCon`. Entry point: `extractPocConRows()` → `po
 - **Canonical contractor list:** `['Connect', 'DAM Tel', 'El-Khayal', 'New Plan', 'Upper Telecom']`
 - **`normalizeContractor(raw)`** — Levenshtein fuzzy match, threshold = 40% of canonical name length (min 3). `In-House` is detected by regex before fuzzy matching.
 - **`parseAmount(raw)`** — converts a raw cell value to a number; replaces the old `toContractorAmount()` which applied a 70% multiplier (that multiplier has been removed — amounts now come directly from the `Contractor2` column).
-- **`buildAndDownload(name, rows)`** — shared by all three sub-tabs. Creates a workbook with a Draft sheet and a Deduction sheet, triggers browser download as `[Name] Draft.xlsx`.
+- **`buildAndDownload(name, rows)`** — shared by all four sub-tabs. Creates a workbook with a Draft sheet and a Deduction sheet, triggers browser download as `[Name] Draft.xlsx`.
 
 ### Draft / Deduction sheet layout
 
@@ -268,6 +285,7 @@ Both Installation and Migration output rows carry **both** dates (read from the 
 - `Contractor2` matched before `Contractor` to avoid false matches — `includes('contractor') && includes('2')`
 - `LMP` exact match (`=== 'lmp'`) preferred; falls back to `includes('lmp')` excluding invoicing/date/status columns
 - **PO Number:** matched with `t.startsWith('po') && !t.includes('portion') && t.includes('ins')` — the `startsWith` + `!includes('portion')` guard is required because "LMP Portion ins" and "Contractor Portion ins" both contain the substring `'po'`, which caused false matches before this fix.
+- **VF Invoice #:** matched with `t.includes('vf invoice') && !t.includes('date')` — the `!t.includes('date')` guard is required because some tracking files have a "VF Invoice Date" column that appears before "VF Invoice #" in the header row. Without the guard, the date column is matched first and its `Date` object values appear in the filter dropdown instead of invoice number strings. This guard is applied in both `finance-app.js` and `contractor-app.js`.
 
 ### Export layout (`exportFinance(rows, filename, cols)`)
 
@@ -318,4 +336,4 @@ The `formatDate()` function remains in the codebase but is no longer used for Ex
 
 ## Service Worker Cache
 
-When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v9` → `lmp-invoicing-v10`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v10`.
+When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v9` → `lmp-invoicing-v10`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v11`.
