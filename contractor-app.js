@@ -889,4 +889,214 @@ function con2FileProgress(on) {
   if (el) el.style.display = on ? 'block' : 'none';
 }
 
+// ===========================================================================
+// TX-RX TASKS SECTION — all non-In-House rows, no date or invoice # filter
+// ===========================================================================
+
+let _wbTxRx      = null;
+let _allRowsTxRx = null;
+
+document.getElementById('btn-pick-contxrx-track').addEventListener('click', () => {
+  document.getElementById('contxrx-track-input').click();
+});
+
+document.getElementById('contxrx-track-input').addEventListener('change', async (e) => {
+  clearTxRxError();
+  const file = e.target.files[0];
+  if (!file) return;
+  txRxFileProgress(true);
+  try {
+    const buf = await file.arrayBuffer();
+    _wbTxRx = XLSX.read(buf, { type: 'array', cellDates: true });
+    document.getElementById('contxrx-track-filename').textContent = file.name;
+    document.getElementById('card-contxrx-track').classList.add('loaded');
+    txRxFileProgress(false);
+    runTxRxAnalysis();
+  } catch (err) {
+    txRxFileProgress(false);
+    showTxRxError('Failed to open file: ' + err.message);
+  }
+});
+
+function runTxRxAnalysis() {
+  clearTxRxError();
+  txRxLoading(true);
+  document.getElementById('contxrx-results').style.display = 'none';
+  setTimeout(() => {
+    try {
+      _allRowsTxRx = extractTxRxRows();
+      populateTxRxFilter(_allRowsTxRx);
+      renderTxRxSummary(getTxRxFilteredGroups());
+      txRxLoading(false);
+      document.getElementById('contxrx-results').style.display = 'block';
+      document.getElementById('contxrx-results').scrollIntoView({ behavior: 'smooth' });
+    } catch (err) {
+      txRxLoading(false);
+      showTxRxError(err.message || 'Unexpected error during analysis.');
+    }
+  }, 50);
+}
+
+function extractTxRxRows() {
+  const sheet = _wbTxRx.Sheets['Invoicing Track'];
+  if (!sheet) throw new Error('Wrong file — expected a sheet named "Invoicing Track".');
+
+  const allRows  = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
+  const header   = allRows[3] ?? [];
+  const dataRows = allRows.slice(4);
+
+  let cJob = -1, cSite = -1, cFacing = -1, cContractor2 = -1;
+  let cContractor = -1, cVfInvoice = -1;
+
+  header.forEach((h, i) => {
+    const t = String(h ?? '').trim().toLowerCase();
+    if (t.includes('job code'))                                                      cJob         = i;
+    if (t.includes('logical site'))                                                  cSite        = i;
+    if ((t === 'facing' || t.includes('facing')) && !t.includes('re'))              cFacing      = i;
+    if (t.includes('vf invoice') && !t.includes('date'))                            cVfInvoice   = i;
+    if (cContractor2 === -1 && t.includes('contractor') && t.includes('2') && !t.includes('invoice'))
+                                                                                     cContractor2 = i;
+    else if (t === 'contractor' || (t.includes('contractor') && !t.includes('invoice') && cContractor === -1))
+                                                                                     cContractor  = i;
+  });
+
+  const cLineItem = 18;
+  if (cContractor  < 0) throw new Error('Column "Contractor" not found.');
+  if (cVfInvoice   < 0) throw new Error('Column "VF Invoice #" not found.');
+  if (cContractor2 < 0) throw new Error('Column "Contractor2" (contractor portion) not found.');
+
+  const rows = [];
+  for (const row of dataRows) {
+    const norm = normalizeContractor(row[cContractor]);
+    if (!norm || norm === 'In-House') continue;
+
+    rows.push({
+      jobCode:    cJob    >= 0 ? String(row[cJob]    ?? '').trim() : '',
+      siteId:     cSite   >= 0 ? String(row[cSite]   ?? '').trim() : '',
+      facing:     cFacing >= 0 ? String(row[cFacing] ?? '').trim() : '',
+      lineItem:   String(row[cLineItem] ?? '').trim(),
+      price:      parseAmount(row[cContractor2]),
+      contractor: norm,
+      vfInvoice:  String(row[cVfInvoice] ?? '').trim(),
+    });
+  }
+
+  if (rows.length === 0) {
+    throw new Error('No non-In-House contractor rows found in the tracking file.');
+  }
+  return rows;
+}
+
+function populateTxRxFilter(rows) {
+  const vfSet  = new Set();
+  const conSet = new Set();
+  rows.forEach(r => {
+    if (r.vfInvoice)  vfSet.add(r.vfInvoice);
+    if (r.contractor) conSet.add(r.contractor);
+  });
+  const dlVf  = document.getElementById('contxrx-filter-vf-list');
+  const dlCon = document.getElementById('contxrx-filter-contractor-list');
+  if (dlVf)  dlVf.innerHTML  = [...vfSet].sort().map(v => `<option value="${esc(v)}"></option>`).join('');
+  if (dlCon) dlCon.innerHTML = [...conSet].sort().map(v => `<option value="${esc(v)}"></option>`).join('');
+}
+
+document.getElementById('contxrx-filter-vf').addEventListener('input',         onTxRxFilterChange);
+document.getElementById('contxrx-filter-contractor').addEventListener('input',  onTxRxFilterChange);
+document.getElementById('btn-contxrx-clear-filter').addEventListener('click', () => {
+  document.getElementById('contxrx-filter-vf').value         = '';
+  document.getElementById('contxrx-filter-contractor').value = '';
+  onTxRxFilterChange();
+});
+
+function onTxRxFilterChange() {
+  if (!_allRowsTxRx) return;
+  renderTxRxSummary(getTxRxFilteredGroups());
+}
+
+function getTxRxFilteredGroups() {
+  if (!_allRowsTxRx) return new Map();
+  const vf  = document.getElementById('contxrx-filter-vf').value.trim().toLowerCase();
+  const con = document.getElementById('contxrx-filter-contractor').value.trim().toLowerCase();
+  const filtered = _allRowsTxRx.filter(r => {
+    if (vf  && !String(r.vfInvoice  ?? '').toLowerCase().includes(vf))  return false;
+    if (con && !String(r.contractor ?? '').toLowerCase().includes(con)) return false;
+    return true;
+  });
+  const groups = new Map();
+  for (const row of filtered) {
+    if (!groups.has(row.contractor)) groups.set(row.contractor, []);
+    groups.get(row.contractor).push(row);
+  }
+  return groups;
+}
+
+function renderTxRxSummary(groups) {
+  let html = '', grandTotal = 0, totalRows = 0;
+  for (const [name, rows] of groups) {
+    const amt = sumPrices(rows);
+    grandTotal += amt;
+    totalRows  += rows.length;
+    html += `<tr><td>${esc(name)}</td><td class="num">${fmtPrice(amt)}</td></tr>`;
+  }
+  if (html) {
+    html += `<tr class="totals-row"><td><strong>Total</strong></td><td class="num"><strong>${fmtPrice(grandTotal)}</strong></td></tr>`;
+  }
+  document.getElementById('contxrx-summary-tbody').innerHTML      = html;
+  document.getElementById('contxrx-stat-rows').textContent        = totalRows.toLocaleString();
+  document.getElementById('contxrx-stat-amount').textContent      = fmtPrice(grandTotal);
+  document.getElementById('contxrx-stat-contractors').textContent = groups.size.toString();
+  const statusEl = document.getElementById('contxrx-export-status');
+  statusEl.textContent = '';
+  statusEl.className   = '';
+  document.getElementById('btn-export-contxrx').disabled = groups.size === 0;
+}
+
+document.getElementById('btn-export-contxrx').addEventListener('click', async () => {
+  const groups = getTxRxFilteredGroups();
+  if (groups.size === 0) return;
+  const btn      = document.getElementById('btn-export-contxrx');
+  const statusEl = document.getElementById('contxrx-export-status');
+  btn.disabled         = true;
+  statusEl.textContent = 'Generating files…';
+  statusEl.className   = '';
+  try {
+    let done = 0;
+    for (const [name, rows] of groups) {
+      await buildAndDownload(name, rows);
+      done++;
+      statusEl.textContent = `Exporting… ${done} / ${groups.size}`;
+      await new Promise(r => setTimeout(r, 500));
+    }
+    statusEl.textContent = `\u2705 Done — ${done} file(s) downloaded.`;
+    statusEl.className   = 'export-status-success';
+  } catch (err) {
+    statusEl.textContent = `\u274c Export failed: ${err.message}`;
+    statusEl.className   = 'export-status-error';
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+function showTxRxError(msg) {
+  const el = document.getElementById('contxrx-error');
+  el.textContent   = msg;
+  el.style.display = 'block';
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function clearTxRxError() {
+  const el = document.getElementById('contxrx-error');
+  el.textContent   = '';
+  el.style.display = 'none';
+}
+
+function txRxLoading(on) {
+  document.getElementById('contxrx-loading').style.display = on ? 'flex' : 'none';
+}
+
+function txRxFileProgress(on) {
+  const el = document.getElementById('contxrx-track-progress');
+  if (el) el.style.display = on ? 'block' : 'none';
+}
+
 })(); // end IIFE

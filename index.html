@@ -229,6 +229,9 @@
             <button class="con-subtab" data-subtab="con-subpanel-pre">
               &#128194; Pre-2026 Tasks
             </button>
+            <button class="con-subtab" data-subtab="con-subpanel-txrx">
+              &#128225; TX-RX Tasks
+            </button>
             <button class="con-subtab" data-subtab="con-subpanel-poc">
               &#128196; POC Invoices
             </button>
@@ -362,6 +365,86 @@
             </section>
 
           </div><!-- /#con-subpanel-pre -->
+
+          <!-- ── SUB-PANEL: TX-RX Tasks ────────────────────────────── -->
+          <div id="con-subpanel-txrx" class="con-subpanel" style="display:none">
+
+            <div id="contxrx-error" role="alert" class="con-error-msg" style="display:none"></div>
+
+            <!-- File Selection -->
+            <section class="card">
+              <h2>Upload Tracking File</h2>
+              <div style="display:flex; justify-content:center; margin-top:0.5rem;">
+                <div id="card-contxrx-track" class="file-card" style="width:100%; max-width:420px;">
+                  <div class="file-icon">&#128193;</div>
+                  <div class="file-label">Task Tracking File (.xlsm)</div>
+                  <button id="btn-pick-contxrx-track" class="btn-secondary">Browse File</button>
+                  <input type="file" id="contxrx-track-input" accept=".xlsm,.xlsx" style="display:none" />
+                  <span id="contxrx-track-filename" class="filename-display">No file selected</span>
+                  <div id="contxrx-track-progress" class="file-progress"></div>
+                </div>
+              </div>
+            </section>
+
+            <!-- Loading -->
+            <div id="contxrx-loading" style="display:none" class="con-loading-wrap">
+              <div class="spinner"></div>
+              <p>Reading tracking data&#8230;</p>
+            </div>
+
+            <!-- Results -->
+            <section id="contxrx-results" class="card" style="display:none">
+              <h2>Filters</h2>
+              <div class="fin-filters">
+                <div class="fin-filter-group">
+                  <label for="contxrx-filter-vf">VF Invoice #</label>
+                  <input type="text" id="contxrx-filter-vf" list="contxrx-filter-vf-list" placeholder="-- All --">
+                  <datalist id="contxrx-filter-vf-list"></datalist>
+                </div>
+                <div class="fin-filter-group">
+                  <label for="contxrx-filter-contractor">Contractor</label>
+                  <input type="text" id="contxrx-filter-contractor" list="contxrx-filter-contractor-list" placeholder="-- All --">
+                  <datalist id="contxrx-filter-contractor-list"></datalist>
+                </div>
+                <div class="fin-filter-group fin-filter-clear">
+                  <button id="btn-contxrx-clear-filter" class="btn-secondary">Clear Filters</button>
+                </div>
+              </div>
+
+              <div class="poc-stats-row fin-stats-row">
+                <div class="poc-stat-box fin-stat-red">
+                  <span class="poc-stat-label">Rows</span>
+                  <span class="poc-stat-value" id="contxrx-stat-rows">0</span>
+                </div>
+                <div class="poc-stat-box poc-stat-migration">
+                  <span class="poc-stat-label">Invoice Amount</span>
+                  <span class="poc-stat-amount" id="contxrx-stat-amount">EGP 0</span>
+                </div>
+                <div class="poc-stat-box poc-stat-total">
+                  <span class="poc-stat-label">Contractors</span>
+                  <span class="poc-stat-value" id="contxrx-stat-contractors">0</span>
+                </div>
+              </div>
+
+              <p class="card-hint" style="margin-top:1rem;">One Excel file per contractor — each file contains a <em>Draft</em> sheet and a <em>Deduction</em> sheet.</p>
+              <div class="table-wrapper">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Contractor</th>
+                      <th style="width:160px; text-align:right;">Invoice Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody id="contxrx-summary-tbody"></tbody>
+                </table>
+              </div>
+              <div style="margin-top:1.25rem;">
+                <button id="btn-export-contxrx" class="btn-primary" disabled>&#8659; Export All Files</button>
+                <p id="contxrx-export-status" class="con-export-status"></p>
+              </div>
+            </section>
+
+          </div><!-- /#con-subpanel-txrx -->
 
           <!-- ── SUB-PANEL: POC Invoices ───────────────────────────── -->
           <div id="con-subpanel-poc" class="con-subpanel" style="display:none">
