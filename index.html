@@ -44,7 +44,11 @@
         </button>
         <button class="nav-item" role="tab" aria-selected="false" data-tab="tsr">
           <span class="nav-icon">&#128203;</span>
-          <span class="nav-label">TSR Submission Checker</span>
+          <span class="nav-label">TSR Sub Prep</span>
+        </button>
+        <button class="nav-item" role="tab" aria-selected="false" data-tab="tsrval">
+          <span class="nav-icon">&#10003;</span>
+          <span class="nav-label">TSR Sub Validation</span>
         </button>
         <button class="nav-item" role="tab" aria-selected="false" data-tab="contractor">
           <span class="nav-icon">&#128209;</span>
@@ -210,6 +214,69 @@
             <p class="card-hint">Downloads an Excel report with one row per matched tracking entry, sorted by site.</p>
             <button id="btn-export" class="btn-primary">Export Results to Excel</button>
             <p id="export-status"></p>
+          </section>
+
+        </main>
+      </div>
+
+      <!-- ================================================================
+           TAB: TSR Sub Validation
+           ================================================================ -->
+      <div id="panel-tsrval" class="tab-panel" style="display:none">
+        <main class="tsr-main">
+
+          <div id="tsrval-error" role="alert" class="con-error-msg" style="display:none"></div>
+
+          <!-- Upload + Submission Number -->
+          <section class="card">
+            <h2>Upload Files &amp; Select Submission</h2>
+
+            <div class="file-cards">
+
+              <div id="tsrval-card-tsr" class="file-card">
+                <div class="file-icon">&#128203;</div>
+                <div class="file-label">TSR File (.xlsb / .xlsx)</div>
+                <button id="tsrval-btn-tsr" class="btn-secondary">Browse File</button>
+                <input type="file" id="tsrval-input-tsr" accept=".xlsb,.xlsx" style="display:none" />
+                <span id="tsrval-tsr-filename" class="filename-display">No file selected</span>
+                <div class="file-progress" id="tsrval-tsr-progress"></div>
+              </div>
+
+              <div id="tsrval-card-folder" class="file-card">
+                <div class="file-icon">&#128193;</div>
+                <div class="file-label">TSR Mails Folder</div>
+                <button id="tsrval-btn-folder" class="btn-secondary">Browse Folder</button>
+                <input type="file" id="tsrval-input-folder" webkitdirectory style="display:none" />
+                <span id="tsrval-folder-filename" class="filename-display">No folder selected</span>
+                <div class="file-progress" id="tsrval-folder-progress"></div>
+              </div>
+
+            </div>
+
+            <p class="card-hint" style="margin-top:0.75rem;">
+              The mails folder should contain numbered sub-folders (1, 2, 3&hellip;),
+              each holding the Excel attachment from the corresponding submission mail.
+            </p>
+
+            <!-- Submission Number + Column Override -->
+            <div class="tsrval-sub-row">
+              <label for="tsrval-sub-number" class="tsrval-sub-label">Submission Number</label>
+              <input type="number" id="tsrval-sub-number" class="tsrval-sub-input" min="1" placeholder="e.g. 5" />
+<button id="tsrval-btn-analyze" class="btn-primary" disabled>&#10003;&nbsp; Validate Submission</button>
+            </div>
+          </section>
+
+          <!-- Loading -->
+          <div id="tsrval-loading" class="con-loading-wrap" style="display:none">
+            <div class="spinner"></div>
+            <p>Validating submission&hellip;</p>
+          </div>
+
+          <!-- Results -->
+          <section id="tsrval-results" class="card" style="display:none">
+            <h2>Validation Results</h2>
+            <div id="tsrval-summary"></div>
+            <div id="tsrval-folder-results"></div>
           </section>
 
         </main>
@@ -703,6 +770,7 @@
   <!-- App scripts -->
   <script src="poc-app.js"></script>
   <script src="tsr-app.js"></script>
+  <script src="tsr-validation-app.js"></script>
   <script src="contractor-app.js"></script>
   <script src="finance-app.js"></script>
 
@@ -715,7 +783,8 @@
 
       const tabLabels = {
         poc:        'POC Invoice Prep',
-        tsr:        'TSR Submission Checker',
+        tsr:        'TSR Sub Prep',
+        tsrval:     'TSR Sub Validation',
         contractor: 'Contractor Invoices',
         finance:    'Finance Sheet'
       };

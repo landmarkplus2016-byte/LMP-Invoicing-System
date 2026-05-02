@@ -10,20 +10,25 @@ A static, no-build PWA (Progressive Web App) for the Landmark Plus Telecom Depar
 
 ## Architecture
 
-All logic lives in four files loaded by `index.html` as plain `<script>` tags:
+All logic lives in five files loaded by `index.html` as plain `<script>` tags:
 
 | File | Purpose |
 |---|---|
 | `poc-app.js` | POC Invoice Prep — reads one Excel file, filters rows, exports styled XLSX |
-| `tsr-app.js` | TSR Submission Checker — reads two Excel files, cross-references them, exports XLSX |
+| `tsr-app.js` | TSR Sub Prep — reads two Excel files, cross-references them, exports XLSX |
+| `tsr-validation-app.js` | TSR Sub Validation — validates a TSR submission against Excel/PDF mail attachments |
 | `contractor-app.js` | Contractor Invoices — four sub-tabs (2026 Tasks, Pre-2026 Tasks, TX-RX Tasks, POC Invoices), generates one styled XLSX per contractor |
 | `finance-app.js` | Finance Sheet — two sub-tabs (TX-RF Track, POC Tracking), filters by invoice numbers, exports styled XLSX |
-| `styles.css` | All styling for all four tabs, sub-tab bars, and shared components |
+| `styles.css` | All styling for all five tabs, sub-tab bars, and shared components |
 | `sw.js` | Service worker — caches app shell for offline use |
 
 All app files are wrapped in IIFEs to avoid global namespace collisions. They share two CDN libraries loaded in `index.html`:
 - **SheetJS** (`XLSX`) — reading all Excel formats (.xlsx, .xls, .xlsm, .xlsb, .csv)
-- **ExcelJS** — writing styled Excel output (all four apps; TSR was migrated from SheetJS `writeFile` to ExcelJS to support header styling)
+- **ExcelJS** — writing styled Excel output (all four export apps; TSR was migrated from SheetJS `writeFile` to ExcelJS to support header styling)
+
+Two additional libraries are loaded **on demand** (dynamic `import()` / script injection) only when needed:
+- **`@kenjiuno/msgreader`** (from `esm.sh`) — parses Outlook `.msg` email files to extract attachments
+- **PDF.js** (`pdfjsLib`, from cdnjs) — extracts text content from PDF files for TOC validation
 
 ## Layout (`index.html` + `styles.css`)
 
@@ -31,11 +36,11 @@ The app uses a **sidebar + main content** layout (not a top header + tab bar):
 
 - **`.sidebar`** (left, fixed width 230px) — `#0070C0` blue gradient background. Contains:
   - `.sidebar-header` — logo (`LMP Big Logo.jpg`) + brand title/subtitle
-  - `.sidebar-nav` — four `.nav-item` tab buttons (one per app)
+  - `.sidebar-nav` — five `.nav-item` tab buttons (one per app)
   - `.sidebar-footer` — **New Analysis** button (`#btn-refresh`) at the bottom; clicking it calls `window.location.reload()` to clear all state
 - **`.main-wrapper`** (right, flex:1) — ledger-paper background (`#eaf0f7`). Contains:
   - `.content-header` — white bar showing the current tab's page title (`#page-title`), updated by the tab-switching JS
-  - Four `.tab-panel` divs (one per app)
+  - Five `.tab-panel` divs (one per app)
   - `<footer>` — navy blue (`#1a3a5c`) with white text
 
 **Color scheme:**
@@ -71,7 +76,7 @@ If both panels used the same class, the `querySelectorAll` in one panel's switch
 6. ExcelJS writes the output with colour-coded column headers (blue = tracking fields, green = acceptance fields, gold = financial fields) plus a merged total amount cell at row 1
 7. Date columns (Installation Date, Migration Date, FAC Date) are written as native Excel date values with format `dd-mmm-yy` — not as strings
 
-## TSR App Data Flow (`tsr-app.js`)
+## TSR Sub Prep Data Flow (`tsr-app.js`)
 
 Requires **two** files loaded simultaneously before analysis runs:
 
@@ -148,6 +153,109 @@ Actual quantity = `Absolute Quantity × distanceMultiplier` (based on distance b
 - **Rows 2+:** Data rows with thin borders and 11pt font.
 - Export row order: Can Submit → FAC with some items assigned → Some items FAC some NFAC yet → Need New PO.
 - File downloaded via `URL.createObjectURL` (same pattern as other apps). `exportToExcel` is `async`; the click handler uses `.catch()` for error handling.
+
+## TSR Sub Validation (`tsr-validation-app.js`)
+
+Validates a TSR submission by comparing it against Excel or PDF attachments extracted from numbered mail folders.
+
+### UI
+
+- **TSR File upload** — the `.xlsb` TSR file (sheet `PO Break Down- Contractor & Acc`)
+- **TSR Mails Folder upload** — a folder whose sub-folders are numbered (1, 2, 3…) or named TOC (TOC 1, TOC 2…). Each sub-folder contains an email (`.msg` or `.eml`) whose attachment is the reference file, or a direct `.xlsx`/`.pdf` file.
+- **Submission Number** — integer typed by the user; filters TSR rows by the Submission # column
+
+Both file inputs show an animated progress bar while loading. Results show a grey diagnostic strip listing the detected column letters for each field.
+
+### TSR File — Sheet and Columns
+
+Sheet: **`PO Break Down- Contractor & Acc`** (exact name required; error lists available sheets if not found).
+
+Header row is located by scanning ALL rows for one that contains both `"item description"` AND `"site id"` in the same row. This dual-keyword check avoids false positives from title rows that mention only one keyword.
+
+| Column | Header pattern | Fallback |
+|---|---|---|
+| Site ID | `includes('site id')` or `=== 'site_id'` | H (7) |
+| Facing Site # | `includes('facing')` | J (9) |
+| Item Description | `includes('item description')` | N (13) |
+| Certificate # | `includes('certificate')` | U (20) |
+| Contractor Status | `includes('contractor') && includes('status')` | V (21) |
+| Submission # | `includes('submission') && !includes('date')` | W (22) |
+| Contractor Comments | `includes('contractor') && includes('comment')` | Y (24) |
+
+**Submission # value normalisation** — `extractNumber()` handles any format: bare integer `5`, float `5.0`, text `"Submission 5"`, `"Sub 5"` etc. Date objects are ignored (return `null`).
+
+**Contractor Comments → folder key:**
+- `normalizeFolderNumber()` — finds the first digit sequence **anywhere** in the comment (not just the start), but returns `null` for strings starting with `"TOC"`. Handles `"Folder 1"`, `"Folder 1 (not the same link)"`, `"1"`, `"1.0"` → all → `1`.
+- `normalizeTocKey()` — handles `"TOC 1"`, `"TOC1"`, `"toc-2"` → `"TOC 1"`, `"TOC 2"`.
+
+**Row routing:**
+- Contractor Status = `"TOC"` → `folderKey = normalizeTocKey(comment)` (string, e.g. `"TOC 1"`)
+- Anything else → `folderKey = normalizeFolderNumber(comment)` (integer, e.g. `1`)
+
+### Folder Map Construction (`buildFolderDataMap`)
+
+Iterates all uploaded files grouped by sub-folder name:
+
+| Sub-folder starts with `"TOC"` | Sub-folder is numeric |
+|---|---|
+| TOC folder → extract **PDF** attachment | Regular folder → extract **Excel** attachment |
+| Key: `"TOC N"` string | Key: integer |
+
+For each folder, tries in priority order: direct file → `.msg` email → `.eml` email.
+
+- `.msg` parsing: `@kenjiuno/msgreader` loaded via `import('https://esm.sh/@kenjiuno/msgreader')` (cached after first load)
+- `.eml` parsing: plain text MIME parser (base64 attachment extraction, no library)
+- PDF.js: loaded by injecting a `<script>` tag pointing to the cdnjs CDN (cached after first load); worker also loaded from cdnjs
+
+### Validation Logic
+
+**Phase 1 — Matching (per folder group):**
+
+**Regular folders (Excel attachment):**
+- Combo key: `Site ID + Facing # + itemMatchKey(Item Description)`
+- `itemMatchKey()` extracts the catalogue code prefix: `"EX06 - S&I of …"` → `"EX06"`. This makes matching prefix-invariant so minor description wording/punctuation differences don't cause failures.
+- Fallback: if exact key not found, try `Site ID + itemMatchKey` (ignoring Facing #) — reports Facing mismatch but still matches the row.
+- After matching: Certificate # (TSR) is validated against Request # (Excel). This is the only additional field check — Site/Facing/Item were already used as the key.
+
+**TOC folders (PDF attachment):**
+- Combo key: `Site ID + normalizeActivityCode(Activity code)`
+- `normalizeActivityCode()` strips all spaces, dots, dashes: `"EX.01"` → `"EX01"`, `"EX-01"` → `"EX01"`.
+- `itemMatchKey("EX01 - Site Visit")` → `"EX01"` — same result, so TSR item prefix matches PDF activity code.
+- No Facing # and no Certificate # checked for TOC — the PDF only has Site ID, Activity code, Activity Description, Quantity.
+- Fallback: try `Site ID + contains(codeKey)` on activity code.
+
+**Phase 2 — Bidirectional order check (per folder group):**
+
+After all rows are matched, every row with a valid Excel/PDF position is checked in both directions:
+- **Forward check (i→j, j>i):** if a later TSR row maps to an earlier position in the attachment file → row `i` is flagged ("this item comes after X in the file but appears before it in the TSR")
+- **Backward check (i→j, j<i):** if an earlier TSR row maps to a later position → row `i` is also flagged ("this item comes before X in the file but appears after it in the TSR")
+
+This ensures **both rows in every swap are flagged**, not just the second one. Uses O(n²) nested loops — acceptable for typical submission sizes.
+
+### PDF Table Parser (`parsePdfToDataRows`)
+
+1. Extracts all text items from all pages with x/y coordinates (PDF y-axis flipped)
+2. Groups items into row buckets by y-coordinate (tolerance ±3 pt, per page)
+3. Finds header row: must contain `"site"` AND at least one of `"activity"` / `"item"` / `"request"`
+4. Classifies each header cell into a logical key:
+   - `"site"` → `site`
+   - `"activity" + "code"` → `req` (reused for activity code in TOC PDFs)
+   - `"activity"` / `"descript"` / `"item"` → `item`
+   - `"request"` → `req`
+   - `"facing"` → `facing`
+   - anything else (Quantity, Area…) → `null` (ignored)
+5. For each data row cell, finds nearest header by x-distance and assigns to that column's key
+6. Returns array of `{ pos, request, siteId, facing, item }`
+
+### Results Display
+
+- Grey diagnostic strip showing detected column letters
+- Summary stat boxes: Submission #, Total Rows, Passed, Failed
+- Green all-OK banner or red issues-found banner
+- Per-folder sections with colour-coded headers (green border = all pass, red = has issues)
+- TOC folders show a teal **TOC** badge and teal left border
+- Per-row table: TSR Row #, Site ID, Facing #, Item Description, Certificate #, Status badge, Issues list
+- Order errors report the specific other row they're swapped with and both Excel positions
 
 ## Contractor App Data Flow (`contractor-app.js`)
 
@@ -336,4 +444,4 @@ The `formatDate()` function remains in the codebase but is no longer used for Ex
 
 ## Service Worker Cache
 
-When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v9` → `lmp-invoicing-v10`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v11`.
+When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v24` → `lmp-invoicing-v25`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v25`.

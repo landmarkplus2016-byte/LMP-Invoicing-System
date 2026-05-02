@@ -1189,3 +1189,279 @@ footer p + p {
     min-width: 100%;
   }
 }
+
+/* =============================================================================
+   TSR Sub Validation Tab
+   ============================================================================= */
+
+/* Submission number row */
+.tsrval-sub-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.tsrval-sub-label {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #1a3a5c;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.tsrval-sub-input {
+  width: 110px;
+  padding: 0.45rem 0.75rem;
+  border: 1.5px solid #c8d6e8;
+  border-radius: 6px;
+  font-size: 1rem;
+  color: #1a1a2e;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.tsrval-sub-input:focus {
+  border-color: #0070C0;
+}
+
+/* TOC folder section — teal left border to distinguish from regular folders */
+.tsrval-folder-toc {
+  border-left: 4px solid #00897b;
+}
+.tsrval-folder-toc .tsrval-folder-header {
+  background: #e0f2f1;
+}
+.tsrval-toc-tag {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 800;
+  background: #00897b;
+  color: #fff;
+  padding: 0.1rem 0.45rem;
+  border-radius: 4px;
+  margin-left: 0.4rem;
+  vertical-align: middle;
+  letter-spacing: 0.06em;
+}
+
+/* Diagnostic column info strip */
+.tsrval-col-info {
+  font-size: 0.78rem;
+  color: #4a5568;
+  background: #f7fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 5px;
+  padding: 0.4rem 0.75rem;
+  margin-bottom: 0.75rem;
+  font-family: monospace;
+  white-space: nowrap;
+  overflow-x: auto;
+}
+
+/* Summary stat boxes */
+.tsrval-stats-row {
+  margin-bottom: 1rem;
+}
+
+.tsrval-stat-pass {
+  background: #f0fff4;
+  border-color: #2f855a;
+}
+
+.tsrval-stat-pass .poc-stat-value {
+  color: #2f855a;
+}
+
+.tsrval-stat-fail {
+  background: #fdecea;
+  border-color: #c53030;
+}
+
+.tsrval-stat-fail .poc-stat-value {
+  color: #c53030;
+}
+
+/* All-ok / has-errors banners */
+.tsrval-all-ok {
+  background: #f0fff4;
+  border: 1px solid #9ae6b4;
+  color: #276749;
+  border-radius: 6px;
+  padding: 0.65rem 1rem;
+  font-weight: 600;
+  margin-bottom: 1.25rem;
+}
+
+.tsrval-has-errors {
+  background: #fff5f5;
+  border: 1px solid #feb2b2;
+  color: #9b2c2c;
+  border-radius: 6px;
+  padding: 0.65rem 1rem;
+  font-weight: 600;
+  margin-bottom: 1.25rem;
+}
+
+/* Folder section block */
+.tsrval-folder-section {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+  overflow: hidden;
+}
+
+.tsrval-folder-section.tsrval-folder-ok {
+  border-color: #9ae6b4;
+}
+
+.tsrval-folder-section.tsrval-folder-fail {
+  border-color: #feb2b2;
+}
+
+/* Folder header bar */
+.tsrval-folder-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.65rem 1rem;
+  background: #f7fafc;
+  border-bottom: 1px solid #e2e8f0;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.tsrval-folder-section.tsrval-folder-ok .tsrval-folder-header {
+  background: #f0fff4;
+  border-bottom-color: #9ae6b4;
+}
+
+.tsrval-folder-section.tsrval-folder-fail .tsrval-folder-header {
+  background: #fff5f5;
+  border-bottom-color: #feb2b2;
+}
+
+.tsrval-folder-title {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #1a3a5c;
+}
+
+/* Folder badge (All Pass / N issues) */
+.tsrval-folder-badge {
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+/* Global error inside folder */
+.tsrval-global-error {
+  background: #fff5f5;
+  color: #9b2c2c;
+  padding: 0.6rem 1rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  border-bottom: 1px solid #feb2b2;
+}
+
+/* Validation results table */
+.tsrval-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.tsrval-table th {
+  background: #0070C0;
+  color: #fff;
+  font-weight: 700;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid #005a9e;
+  white-space: nowrap;
+  font-size: 0.82rem;
+}
+
+.tsrval-table td {
+  padding: 0.45rem 0.6rem;
+  border: 1px solid #e2e8f0;
+  vertical-align: top;
+}
+
+.tsrval-row-pass {
+  background: #f0fff4;
+}
+
+.tsrval-row-fail {
+  background: #fff5f5;
+}
+
+.tsrval-row-pass:hover {
+  background: #c6f6d5;
+}
+
+.tsrval-row-fail:hover {
+  background: #fed7d7;
+}
+
+/* Item description: allow wrapping */
+.tsrval-item-col {
+  min-width: 220px;
+  max-width: 360px;
+  white-space: normal;
+  word-break: break-word;
+}
+
+/* Issues column */
+.tsrval-issues-col {
+  min-width: 200px;
+}
+
+.tsrval-issue-item {
+  font-size: 0.82rem;
+  color: #9b2c2c;
+  margin-bottom: 0.2rem;
+  line-height: 1.4;
+}
+
+/* Inline pass/fail badges */
+.tsrval-badge {
+  display: inline-block;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.tsrval-badge-pass {
+  background: #c6f6d5;
+  color: #276749;
+}
+
+.tsrval-badge-fail {
+  background: #fed7d7;
+  color: #9b2c2c;
+}
+
+@media (max-width: 768px) {
+  .tsrval-sub-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .tsrval-sub-input {
+    width: 100%;
+  }
+
+  .tsrval-table {
+    font-size: 0.8rem;
+  }
+
+  .tsrval-item-col {
+    min-width: 140px;
+  }
+}

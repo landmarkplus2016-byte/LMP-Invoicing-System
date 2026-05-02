@@ -1,5 +1,5 @@
 // =============================================================================
-// LMP Invoicing System — TSR Submission Checker logic
+// LMP Invoicing System — TSR Sub Prep logic
 // Wrapped in IIFE to avoid naming conflicts with POC app.
 // =============================================================================
 (function () {
