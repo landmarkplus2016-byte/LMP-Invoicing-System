@@ -300,7 +300,7 @@ async function exportToExcel(result, originalFileName) {
   const url = URL.createObjectURL(blob);
   const a   = document.createElement('a');
   a.href    = url;
-  a.download = originalFileName.replace(/\.[^.]+$/, '') + '_Invoice_Output.xlsx';
+  a.download = 'Invoice Request Track.xlsx';
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
