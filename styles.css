@@ -76,7 +76,6 @@ body {
   height: 70px;
   width: auto;
   object-fit: contain;
-  mix-blend-mode: multiply;
   box-sizing: content-box;
 }
 
