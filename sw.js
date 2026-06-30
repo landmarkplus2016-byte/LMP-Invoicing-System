@@ -4,7 +4,7 @@
 // CDN libraries (SheetJS, ExcelJS) are NOT cached — pulled fresh each session.
 // =============================================================================
 
-const CACHE = 'lmp-invoicing-v25';
+const CACHE = 'lmp-invoicing-v26';
 const FILES = [
   './',
   './index.html',
@@ -17,7 +17,7 @@ const FILES = [
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
-  './LMP Big Logo.jpg'
+  './LMP Logo White.png'
 ];
 
 self.addEventListener('install', e => {
