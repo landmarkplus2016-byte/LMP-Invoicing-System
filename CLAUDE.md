@@ -133,12 +133,23 @@ Notes:
 - Combos with no readable line items after filtering are assigned **Need New PO**
 
 **Greedy TSR allocation (eligible combos only):**
-1. Eligible combos are sorted by their earliest Excel row number across all their tasks (first-occurrence rule)
+1. Eligible combos are sorted by **acceptance week ascending, then by earliest Excel row number** (first-occurrence rule within a week)
 2. For each combo in order: check whether every line item's actual quantity fits within the current TSR available quantity
 3. If all items fit → **Can Submit**; deduct those quantities from TSR available for subsequent combos
 4. If any item does not fit, or the line item is not found in the TSR at all → **Need New PO** for the entire combo (no partial submission)
 
 Actual quantity = `Absolute Quantity × distanceMultiplier` (based on distance band column). Financial totals use the `newTotal` column directly, not computed from qty × price.
+
+**Acceptance week grouping (`parseAcceptanceWeek`):**
+
+The allocation prefers to keep one submission inside a single acceptance week.
+
+- **Grouping is by the full label string, not by the week number.** Real values carry a meaningful prefix — `D-`, `U-`, `A-` — so `D-W05-W06-2026` and `U-W05-2026` share a week number but are different groups and must not be mixed in one submission.
+- `parseAcceptanceWeek(raw)` parses values like `D-W33-W34-2026` into `{ label, sortKey }` where `sortKey = year * 100 + lowest week number` (so `D-W33-W34-2026` → `202633`, and the combined form `U-W09-2026/U-W15-2026` → `202609`). The `sortKey` is used **only for ordering**; the `label` is what groups combos. Values with no `20xx` year or no `W<n>` token get `sortKey = Infinity` and sort last; blank values give an empty label.
+- A combo whose tasks span more than one acceptance week is assigned its **earliest** week. It remains a single all-or-nothing unit.
+- Sort order is week `sortKey` ascending → full `label` (`localeCompare`) → `comboFirstRow` ascending. The label tiebreaker keeps same-numbered labels with different prefixes contiguous instead of interleaved. Combos with `Infinity` week keys always sort after parseable ones.
+- **"Prefer, then fill"** — the oldest label is allocated first, but once it is exhausted the greedy loop keeps going into the following labels so leftover TSR quantity is not wasted. The same-week rule is a priority, not a hard filter.
+- `weekSummary` (module state) records the target label and how much of it fit: `{ label, totalTasks, selectedTasks, totalCombos, selectedCombos, otherTasks }`. `renderResults` renders it into `#week-summary` as a blue `.week-card` above the money cards (e.g. "24 of 38 tasks selected (63%)"), and hides the element when there are no eligible combos.
 
 **Money totals (summary boxes):**
 - Can Submit → green "Can Submit" box
@@ -148,6 +159,7 @@ Actual quantity = `Absolute Quantity × distanceMultiplier` (based on distance b
 
 ### Export (`exportToExcel` — uses ExcelJS)
 
+- **Columns:** VF Task Owner, Vendor, Logical Site ID, Site Option, Facing, Task Date, Line Item, Absolute Quantity, PRQ, Certificate #, Acceptance Status, **Acceptance Week**, Actual Quantity, New Total Price, ID#, Job Code, Comment. `HEADERS` and `COL_WIDTHS` are positional and must stay the same length as the data-row array in `exportToExcel`.
 - **Row 1:** Column headers — `#0070C0` blue fill, white bold text, centered, thin borders.
 - **Row 1 frozen** — stays visible when scrolling (`ws.views = [{ state: 'frozen', ySplit: 1 }]`).
 - **Rows 2+:** Data rows with thin borders and 11pt font.
@@ -444,4 +456,4 @@ The `formatDate()` function remains in the codebase but is no longer used for Ex
 
 ## Service Worker Cache
 
-When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v24` → `lmp-invoicing-v25`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v27`.
+When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v24` → `lmp-invoicing-v25`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v29`.

@@ -14,6 +14,7 @@ let allExportItems = [];
 let moneyCanSubmit = 0;
 let moneyPending   = 0;
 let moneyNeedPo    = 0;
+let weekSummary    = null; // { label, totalTasks, selectedTasks, totalCombos, selectedCombos, otherTasks }
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -336,19 +337,35 @@ function runAnalysis() {
   }
 
   // ── Step 5: Build per-combo quantities for TSR allocation ─────────────────
-  // Sort eligible combos by their earliest Excel row number (first-occurrence rule)
+  // Also records each combo's earliest Excel row and its acceptance week, the
+  // two keys the allocation order below is built from.
   const comboFirstRow    = new Map();
   const comboLineItemQty = new Map(); // combo → Map(lineItem → actualQty)
+  const comboWeekKey     = new Map(); // combo → numeric acceptance-week sort key
+  const comboWeekLabel   = new Map(); // combo → acceptance-week label
+  const comboTaskCount   = new Map(); // combo → number of non-cancelled tasks
 
   for (const combo of eligibleCombos) {
     const entries  = comboRows.get(combo);
     let   minRow   = Infinity;
+    let   weekKey  = Infinity;
+    let   weekLbl  = '';
+    let   taskCount = 0;
     const liQtyMap = new Map();
 
     for (const { row, rowIndex } of entries) {
       if (taskStatus(row) === 'cancelled') continue;
+      taskCount++;
       const excelRow = rowIndex + 5;
       if (excelRow < minRow) minRow = excelRow;
+
+      // A combo spanning several acceptance weeks belongs to its earliest week
+      const wk = parseAcceptanceWeek(row[acceptanceWeekColIndex]);
+      if (wk.sortKey < weekKey || (!weekLbl && wk.label)) {
+        weekKey = Math.min(weekKey, wk.sortKey);
+        weekLbl = wk.label;
+      }
+
       const li = (row[lineItemColIndex] ?? '').toString().trim();
       if (!li) continue;
       const distance  = (row[distanceColIndex] ?? '').toString().trim();
@@ -359,10 +376,26 @@ function runAnalysis() {
 
     comboFirstRow.set(combo, minRow);
     comboLineItemQty.set(combo, liQtyMap);
+    comboWeekKey.set(combo, weekKey);
+    comboWeekLabel.set(combo, weekLbl);
+    comboTaskCount.set(combo, taskCount);
   }
 
-  // Sort by first row ascending → earlier sites get priority in TSR allocation
-  eligibleCombos.sort((a, b) => comboFirstRow.get(a) - comboFirstRow.get(b));
+  // Priority order for TSR allocation:
+  //   1. Acceptance week number ascending — the oldest week is submitted first.
+  //   2. Full acceptance week label — keeps labels that share a week number but
+  //      differ by prefix (D-W05-W06-2026 vs U-W05-2026) as separate groups, so
+  //      a submission stays inside one exact label as much as possible.
+  //   3. First Excel row ascending within a label (original first-occurrence rule).
+  // Once the target label is exhausted, remaining TSR quantity is still used by
+  // the following labels rather than being wasted ("prefer, then fill").
+  eligibleCombos.sort((a, b) => {
+    const ka = comboWeekKey.get(a), kb = comboWeekKey.get(b);
+    if (ka !== kb) return (ka === Infinity) ? 1 : (kb === Infinity) ? -1 : ka - kb;
+    const la = comboWeekLabel.get(a), lb = comboWeekLabel.get(b);
+    if (la !== lb) return la.localeCompare(lb);
+    return comboFirstRow.get(a) - comboFirstRow.get(b);
+  });
 
   // ── Step 6: Greedy TSR allocation ─────────────────────────────────────────
   // For each line item, start with the TSR remaining quantity.
@@ -402,6 +435,33 @@ function runAnalysis() {
     } else {
       needPoCombos.add(combo);
     }
+  }
+
+  // ── Step 6b: Target acceptance week summary ───────────────────────────────
+  // The target week is the earliest acceptance week label present among the
+  // eligible combos — the one the allocation gave priority to. Grouping is by
+  // the full label, so D-W05-W06-2026 and U-W05-2026 are different targets.
+  // Report how much of that label fit.
+  weekSummary = null;
+  if (eligibleCombos.length > 0) {
+    const label = comboWeekLabel.get(eligibleCombos[0]);
+    let totalTasks = 0, selectedTasks = 0, totalCombos = 0, selectedCombos = 0, otherTasks = 0;
+
+    for (const combo of eligibleCombos) {
+      const tasks = comboTaskCount.get(combo) ?? 0;
+      if (comboWeekLabel.get(combo) === label) {
+        totalCombos++;
+        totalTasks += tasks;
+        if (canSubmitCombos.has(combo)) { selectedCombos++; selectedTasks += tasks; }
+      } else if (canSubmitCombos.has(combo)) {
+        otherTasks += tasks;
+      }
+    }
+
+    weekSummary = {
+      label: label || '(blank)',
+      totalTasks, selectedTasks, totalCombos, selectedCombos, otherTasks
+    };
   }
 
   // ── Step 7: Build summary results (line-item view for the TSR table) ──────
@@ -480,6 +540,7 @@ function runAnalysis() {
       prq:              colVal(row, prqColIndex),
       certificate:      colVal(row, certificateColIndex),
       acceptanceStatus: rawAcc != null ? String(rawAcc) : '',
+      acceptanceWeek:   colVal(row, acceptanceWeekColIndex),
       actualQty,
       newTotal:         newTotalColIndex >= 0 ? row[newTotalColIndex] : null,
       idNum:            colVal(row, idColIndex),
@@ -569,6 +630,24 @@ function comboKey(row, jobCodeIdx, logicalSiteIdx) {
   return colVal(row, jobCodeIdx) + '|' + colVal(row, logicalSiteIdx);
 }
 
+// Acceptance Week values look like "D-W33-W34-2026" — a label, one or more
+// week numbers, and a 4-digit year. Returns a numeric sort key (year * 100 +
+// the lowest week number in the value) so weeks order chronologically, plus the
+// original label used for grouping/display. Anything unparseable sorts last.
+function parseAcceptanceWeek(raw) {
+  const label = (raw ?? '').toString().trim();
+  if (!label) return { label: '', sortKey: Infinity };
+
+  const yearMatch  = label.match(/(20\d{2})/);
+  const weekMatches = label.match(/W\s*(\d{1,2})/gi);
+
+  if (!yearMatch || !weekMatches) return { label, sortKey: Infinity };
+
+  const weeks = weekMatches.map(w => parseInt(w.replace(/[^\d]/g, ''), 10));
+  const minWeek = Math.min(...weeks);
+  return { label, sortKey: Number(yearMatch[1]) * 100 + minWeek };
+}
+
 // ---------------------------------------------------------------------------
 // Render Results
 // ---------------------------------------------------------------------------
@@ -582,6 +661,30 @@ function renderResults(results) {
   document.getElementById('summary').textContent =
     totalRowCount + ' row' + (totalRowCount !== 1 ? 's' : '') +
     ' matched across ' + lineItemCount + ' line item' + (lineItemCount !== 1 ? 's' : '');
+
+  const weekBox = document.getElementById('week-summary');
+  if (weekSummary) {
+    const w = weekSummary;
+    const pct = w.totalTasks > 0 ? Math.round((w.selectedTasks / w.totalTasks) * 100) : 0;
+    weekBox.innerHTML =
+      '<div class="week-card">' +
+        '<span class="week-label">📅 Target Acceptance Week</span>' +
+        '<span class="week-value">' + escapeHtml(w.label) + '</span>' +
+        '<span class="week-detail">' +
+          w.selectedTasks + ' of ' + w.totalTasks + ' task' + (w.totalTasks !== 1 ? 's' : '') +
+          ' selected (' + pct + '%) &mdash; ' +
+          w.selectedCombos + ' of ' + w.totalCombos + ' site' + (w.totalCombos !== 1 ? 's' : '') +
+          (w.otherTasks > 0
+            ? '. ' + w.otherTasks + ' further task' + (w.otherTasks !== 1 ? 's' : '') +
+              ' from other acceptance weeks were added to use the remaining TSR quantity.'
+            : '.') +
+        '</span>' +
+      '</div>';
+    weekBox.style.display = '';
+  } else {
+    weekBox.innerHTML = '';
+    weekBox.style.display = 'none';
+  }
 
   document.getElementById('money-can-submit').innerHTML =
     '<span class="money-label">\u2705 Can Submit</span><span class="money-value">' + fmtEGP(moneyCanSubmit) + '</span>';
@@ -641,9 +744,9 @@ async function exportToExcel() {
   const HEADERS = [
     'VF Task Owner', 'Vendor', 'Logical Site ID', 'Site Option', 'Facing',
     'Task Date', 'Line Item', 'Absolute Quantity', 'PRQ', 'Certificate #',
-    'Acceptance Status', 'Actual Quantity', 'New Total Price', 'ID#', 'Job Code', 'Comment'
+    'Acceptance Status', 'Acceptance Week', 'Actual Quantity', 'New Total Price', 'ID#', 'Job Code', 'Comment'
   ];
-  const COL_WIDTHS = [18, 14, 18, 14, 12, 14, 60, 18, 10, 16, 20, 16, 16, 16, 14, 14];
+  const COL_WIDTHS = [18, 14, 18, 14, 12, 14, 60, 18, 10, 16, 20, 20, 16, 16, 16, 14, 14];
 
   const wb = new ExcelJS.Workbook();
   wb.creator = 'LMP Invoicing System';
@@ -681,6 +784,7 @@ async function exportToExcel() {
       r.prq,
       r.certificate,
       r.acceptanceStatus,
+      r.acceptanceWeek,
       Number(r.actualQty.toFixed(2)),
       r.newTotal != null ? Number(r.newTotal) : '',
       r.idNum,
