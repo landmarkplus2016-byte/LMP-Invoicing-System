@@ -81,6 +81,54 @@ function normalizeActivityCode(code) {
   return String(code || '').replace(/[\s.\-_]/g, '').toUpperCase();
 }
 
+// Split a Site ID cell into its atomic tokens.
+// PDF certificates write MW-link rows as a pair: "D7677 - 4637" → ["D7677", "4637"]
+// while plain rows are a single token: "5227" → ["5227"]
+function siteTokens(v) {
+  return String(v == null ? '' : v).toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean);
+}
+
+// How well a TSR row's Site ID / Facing # matches a PDF row's Site ID cell.
+// Order matters: in the PDF pair the FIRST token is the Site ID and the second
+// is the facing site, so a reversed pair is reported as an issue, not accepted.
+// Returns { level, issue } — higher level = better match, 0 = no match.
+//   4 = Site ID first and facing agrees (or the PDF carries no facing token)
+//   3 = Site ID first, but the facing token differs
+//   2 = Site ID and facing are the other way round in the PDF
+//   1 = Site ID appears, but not as the first token
+function siteMatchLevel(tsrRow, pdfRow) {
+  const pt = siteTokens(pdfRow.siteId);
+  if (!pt.length) return { level: 0, issue: null };
+  const site   = siteTokens(tsrRow.siteId)[0] || null;
+  const facing = siteTokens(tsrRow.facing)[0] || null;
+  if (!site) return { level: 0, issue: null };
+
+  if (pt[0] === site) {
+    if (pt.length < 2 || !facing || pt[1] === facing) return { level: 4, issue: null };
+    return {
+      level: 3,
+      issue: 'Facing # mismatch — TSR: "' + tsrRow.facing +
+             '", PDF: "' + pt[1] + '" (in "' + pdfRow.siteId + '")'
+    };
+  }
+  if (facing && pt[0] === facing && pt.includes(site)) {
+    return {
+      level: 2,
+      issue: 'Site ID / Facing # reversed — PDF reads "' + pdfRow.siteId +
+             '" but the Site ID must come first (TSR Site ID: "' + tsrRow.siteId +
+             '", Facing #: "' + tsrRow.facing + '")'
+    };
+  }
+  if (pt.includes(site)) {
+    return {
+      level: 1,
+      issue: 'Site ID is not the first entry in the PDF cell "' + pdfRow.siteId +
+             '" (TSR Site ID: "' + tsrRow.siteId + '")'
+    };
+  }
+  return { level: 0, issue: null };
+}
+
 function escHtml(s) {
   return String(s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;')
@@ -349,7 +397,9 @@ async function buildFolderDataMap(allFiles) {
       }
 
     } else {
-      // ── Regular (numbered) folder → want Excel attachment ─────────────────
+      // ── Regular (numbered) folder → Excel preferred, PDF accepted ─────────
+      // Some numbered folders now hold a Completion Certificate PDF instead of
+      // an Excel sheet; those are validated the same way TOC folders are.
       const fn = normalizeFolderNumber(subName);
       if (fn == null || dataMap.has(fn)) continue;
 
@@ -360,17 +410,28 @@ async function buildFolderDataMap(allFiles) {
         dataMap.set(fn, { type: 'excel', fileName: xlFile.name, data: new Uint8Array(buf) });
         continue;
       }
-      // .msg → extract Excel attachment
+      // Direct PDF file
+      const pdfFile = files.find(f => PDF_EXT.test(f.name));
+      if (pdfFile) {
+        const buf = await pdfFile.arrayBuffer();
+        dataMap.set(fn, { type: 'pdf', fileName: pdfFile.name, data: new Uint8Array(buf) });
+        continue;
+      }
+      // .msg → extract Excel, else PDF attachment
       const msgFile = files.find(f => /\.msg$/i.test(f.name));
       if (msgFile) {
         const r = await extractFromMsg(msgFile, EXCEL_EXT);
         if (r) { dataMap.set(fn, { type: 'excel', ...r }); continue; }
+        const p = await extractFromMsg(msgFile, PDF_EXT);
+        if (p) { dataMap.set(fn, { type: 'pdf', ...p }); continue; }
       }
-      // .eml → extract Excel attachment
+      // .eml → extract Excel, else PDF attachment
       const emlFile = files.find(f => /\.eml$/i.test(f.name));
       if (emlFile) {
         const r = await extractFromEml(emlFile, EXCEL_EXT);
         if (r) { dataMap.set(fn, { type: 'excel', ...r }); continue; }
+        const p = await extractFromEml(emlFile, PDF_EXT);
+        if (p) { dataMap.set(fn, { type: 'pdf', ...p }); continue; }
       }
     }
   }
@@ -631,12 +692,12 @@ async function runValidation() {
       folderResults.push({
         folderKey, isToc: isTocGroup, fileName: null,
         globalError:
-          'Could not extract ' + (isTocGroup ? 'PDF' : 'Excel') +
+          'Could not extract ' + (isTocGroup ? 'PDF' : 'Excel or PDF') +
           ' from folder "' + folderKey + '". ' + found +
           ' (supports direct file, Outlook .msg, or .eml)',
         rows: groupRows.map(r => ({
           ...r, status: 'error',
-          issues: ['No ' + (isTocGroup ? 'PDF' : 'Excel') + ' data for folder "' + folderKey + '"'],
+          issues: ['No ' + (isTocGroup ? 'PDF' : 'Excel/PDF') + ' data for folder "' + folderKey + '"'],
           excelPos: null
         }))
       });
@@ -697,22 +758,24 @@ async function runValidation() {
 
     // ── Phase 1: Match each row ───────────────────────────────────────────────
     //
-    // Regular folders: key = Site ID + Facing # + Item code prefix
+    // Excel attachments: key = Site ID + Facing # + Item code prefix
     //   e.g.  "4710 || HD4770 || TX04"
     //
-    // TOC folders: key = Site ID + stripped description text (no code prefix,
-    //   no Facing #, no Certificate # — the PDF only has Site ID + Activity Description)
-    //   TSR "EX01 - Site Visit" → stripped → "site visit"
-    //   PDF "Site Visit"        → lower    → "site visit"  ← same key
-
-    const buildComboKey = isTocGroup
-      ? r => normalizeLower(r.siteId) + '||' + normalizeActivityCode(r.request)
-      : r => normalizeLower(r.siteId) + '||' + normalizeLower(r.facing) + '||' + itemMatchKey(r.item);
+    // PDF attachments (TOC folders AND numbered folders holding a Completion
+    // Certificate): matched on Site ID + Activity code. The PDF Site ID cell may
+    // be a single site ("5227") or an MW-link pair ("D7677 - 4637"), so sites are
+    // compared token-wise against the TSR Site ID / Facing #. No Certificate #
+    // check — the certificate PDF carries no Request #.
+    //   TSR "EX01 - Site Visit" → itemMatchKey → "EX01"
+    //   PDF "EX.01"             → normalizeActivityCode → "EX01"  ← same code
+    const isPdfGroup = folderData.type === 'pdf';
 
     const byCombo = new Map();
-    for (const r of dataRows) {
-      const k = buildComboKey(r);
-      if (!byCombo.has(k)) byCombo.set(k, r);
+    if (!isPdfGroup) {
+      for (const r of dataRows) {
+        const k = normalizeLower(r.siteId) + '||' + normalizeLower(r.facing) + '||' + itemMatchKey(r.item);
+        if (!byCombo.has(k)) byCombo.set(k, r);
+      }
     }
 
     const validatedRows = [];
@@ -721,42 +784,53 @@ async function runValidation() {
       let status   = 'pass';
       let matchPos = null;
 
-      // Build the lookup key for this TSR row.
-      // TOC:     Site ID  +  normalised activity code
-      //   TSR "EX01 - Site Visit" → itemMatchKey → "EX01"
-      //   PDF "EX.01"             → normalizeActivityCode(r.req) → "EX01"  ← same key
-      // Regular: Site ID + Facing # + Item prefix
-      const key = isTocGroup
-        ? normalizeLower(tsrRow.siteId) + '||' + itemMatchKey(tsrRow.itemDesc)
-        : normalizeLower(tsrRow.siteId) + '||' + normalizeLower(tsrRow.facing) + '||' + itemMatchKey(tsrRow.itemDesc);
-
-      const matched = byCombo.get(key);
-
-      if (!matched) {
-        if (isTocGroup) {
-          // TOC fallback: same site, try loose activity-code contains-match
-          const codeKey = itemMatchKey(tsrRow.itemDesc); // e.g. "EX01"
-          const partial = dataRows.find(r =>
-            normalizeLower(r.siteId) === normalizeLower(tsrRow.siteId) &&
-            normalizeActivityCode(r.request).includes(codeKey)
-          );
-          if (partial) {
-            issues.push(
-              'Activity Code mismatch — TSR: "' + codeKey +
-              '", PDF: "' + partial.request + '" (normalised: "' +
-              normalizeActivityCode(partial.request) + '")'
-            );
-            matchPos = partial.pos;
+      let matched = null;
+      if (isPdfGroup) {
+        // Pick the PDF line whose activity code matches; among lines with the
+        // same code standing, the best site match wins.
+        const codeKey = itemMatchKey(tsrRow.itemDesc);   // e.g. "EX01", "TX03"
+        let best = null, bestScore = -1;
+        for (const r of dataRows) {
+          const m = siteMatchLevel(tsrRow, r);
+          if (!m.level) continue;
+          const codeOk = normalizeActivityCode(r.request) === codeKey;
+          // Activity code is the primary check: a code match outranks a better
+          // site level, so the row is paired with the line it is really about.
+          const score  = (codeOk ? 100 : 0) + m.level;
+          if (score > bestScore) { bestScore = score; best = { row: r, ...m, codeOk }; }
+        }
+        if (best) {
+          matchPos = best.row.pos;
+          if (best.issue) { issues.push(best.issue); status = 'fail'; }
+          if (best.codeOk) {
+            matched = best.row;
           } else {
             issues.push(
-              'Row not found in PDF — no match for ' +
-              'Site ID "' + tsrRow.siteId + '" + ' +
-              'Activity Code "' + codeKey + '" ' +
-              '(from TSR item: "' + tsrRow.itemDesc + '")'
+              'Activity Code mismatch — TSR: "' + codeKey +
+              '", PDF: "' + best.row.request + '" (normalised: "' +
+              normalizeActivityCode(best.row.request) + '") ' +
+              'for Site ID "' + best.row.siteId + '"'
             );
+            status = 'fail';
           }
         } else {
-          // Regular fallback: try by Site ID + Item prefix, ignore Facing
+          issues.push(
+            'Row not found in PDF — no match for ' +
+            'Site ID "' + tsrRow.siteId + '"' +
+            (tsrRow.facing ? ' / Facing "' + tsrRow.facing + '"' : '') +
+            ' + Activity Code "' + codeKey + '" ' +
+            '(from TSR item: "' + tsrRow.itemDesc + '")'
+          );
+          status = 'fail';
+        }
+      } else {
+        const key = normalizeLower(tsrRow.siteId) + '||' + normalizeLower(tsrRow.facing) + '||' + itemMatchKey(tsrRow.itemDesc);
+        matched = byCombo.get(key) || null;
+      }
+
+      if (!isPdfGroup) {
+        if (!matched) {
+          // Excel fallback: try by Site ID + Item prefix, ignore Facing
           const partial = dataRows.find(r =>
             normalizeLower(r.siteId) === normalizeLower(tsrRow.siteId) &&
             itemMatchKey(r.item)     === itemMatchKey(tsrRow.itemDesc)
@@ -774,12 +848,10 @@ async function runValidation() {
               'Item "' + tsrRow.itemDesc + '"'
             );
           }
-        }
-        status = 'fail';
-      } else {
-        matchPos = matched.pos;
-        if (!isTocGroup) {
-          // Certificate # only checked for regular (Excel) folders — PDF has no Request #
+          status = 'fail';
+        } else {
+          matchPos = matched.pos;
+          // Certificate # only checked for Excel attachments — a PDF has no Request #
           if (normalizeLower(matched.request) !== normalizeLower(tsrRow.cert)) {
             issues.push('Certificate # mismatch — TSR: "' + tsrRow.cert +
               '", file (Request #): "' + matched.request + '"');
@@ -828,7 +900,7 @@ async function runValidation() {
     }
 
     folderResults.push({
-      folderKey, isToc: isTocGroup,
+      folderKey, isToc: isTocGroup, isPdf: isPdfGroup,
       fileName: folderData.fileName,
       globalError: null, rows: validatedRows
     });
@@ -876,7 +948,9 @@ function renderResults(subNum, totalRows, folderResults, colInfo) {
   let foldersHtml = '';
   for (const folder of folderResults) {
     const title    = folder.folderKey != null ? String(folder.folderKey) : 'Unknown Folder';
-    const typeTag  = folder.isToc ? ' <span class="tsrval-toc-tag">TOC</span>' : '';
+    const typeTag  = folder.isToc
+      ? ' <span class="tsrval-toc-tag">TOC</span>'
+      : (folder.isPdf ? ' <span class="tsrval-toc-tag">PDF</span>' : '');
     const filePart = folder.fileName ? ' &mdash; <em>' + escHtml(folder.fileName) + '</em>' : '';
     const passN    = folder.rows.filter(r => r.status === 'pass').length;
     const failN    = folder.rows.length - passN;

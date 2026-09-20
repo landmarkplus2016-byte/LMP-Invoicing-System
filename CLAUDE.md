@@ -210,10 +210,12 @@ Iterates all uploaded files grouped by sub-folder name:
 
 | Sub-folder starts with `"TOC"` | Sub-folder is numeric |
 |---|---|
-| TOC folder → extract **PDF** attachment | Regular folder → extract **Excel** attachment |
+| TOC folder → extract **PDF** attachment | Regular folder → extract **Excel** attachment, else **PDF** |
 | Key: `"TOC N"` string | Key: integer |
 
 For each folder, tries in priority order: direct file → `.msg` email → `.eml` email.
+
+**Numbered folders may hold a PDF instead of an Excel.** Some numbered folders now contain only a Completion Certificate PDF. `buildFolderDataMap` prefers Excel and falls back to PDF (direct file, then `.msg`/`.eml` attachment). The validation path is chosen by the **attachment type actually found** (`folderData.type`), not by the folder name — so a numbered folder with a PDF is validated with the PDF rules below. Such folders show a grey **PDF** badge in the results header.
 
 - `.msg` parsing: `@kenjiuno/msgreader` loaded via `import('https://esm.sh/@kenjiuno/msgreader')` (cached after first load)
 - `.eml` parsing: plain text MIME parser (base64 attachment extraction, no library)
@@ -223,18 +225,38 @@ For each folder, tries in priority order: direct file → `.msg` email → `.eml
 
 **Phase 1 — Matching (per folder group):**
 
-**Regular folders (Excel attachment):**
+**Excel attachments (regular numbered folders):**
 - Combo key: `Site ID + Facing # + itemMatchKey(Item Description)`
 - `itemMatchKey()` extracts the catalogue code prefix: `"EX06 - S&I of …"` → `"EX06"`. This makes matching prefix-invariant so minor description wording/punctuation differences don't cause failures.
 - Fallback: if exact key not found, try `Site ID + itemMatchKey` (ignoring Facing #) — reports Facing mismatch but still matches the row.
 - After matching: Certificate # (TSR) is validated against Request # (Excel). This is the only additional field check — Site/Facing/Item were already used as the key.
 
-**TOC folders (PDF attachment):**
-- Combo key: `Site ID + normalizeActivityCode(Activity code)`
-- `normalizeActivityCode()` strips all spaces, dots, dashes: `"EX.01"` → `"EX01"`, `"EX-01"` → `"EX01"`.
-- `itemMatchKey("EX01 - Site Visit")` → `"EX01"` — same result, so TSR item prefix matches PDF activity code.
-- No Facing # and no Certificate # checked for TOC — the PDF only has Site ID, Activity code, Activity Description, Quantity.
-- Fallback: try `Site ID + contains(codeKey)` on activity code.
+**PDF attachments (TOC folders and numbered folders holding a Completion Certificate):**
+
+The only fields the certificate PDF carries are Site ID, Activity code, Activity Description and Quantity — so the check is **Site ID + Activity code**. No Certificate # check (there is no Request # in the PDF).
+
+- The TSR item's catalogue prefix is compared against the PDF Activity code: `itemMatchKey("EX01 - Site Visit")` → `"EX01"` vs `normalizeActivityCode("EX.01")` → `"EX01"`.
+- `normalizeActivityCode()` strips all spaces, dots, dashes and underscores: `"EX.01"` / `"EX-01"` / `"EX 01"` → `"EX01"`.
+- **Site matching is token-based** (`siteTokens` + `siteMatchLevel`), because the PDF Site ID cell is written two different ways:
+  - a single site — `"5227"` (site-visit style certificates)
+  - an MW-link pair — `"D7677 - 4637"` (TX/DS style certificates)
+
+  `siteTokens()` splits the cell on every non-alphanumeric run. **Order is significant — the first token is the Site ID, the second is the facing site.** `siteMatchLevel(tsrRow, pdfRow)` returns `{ level, issue }`:
+
+  | Level | Situation | Issue reported |
+  |---|---|---|
+  | 4 | Site ID is the first token and the facing agrees (or the PDF has no second token) | — |
+  | 3 | Site ID is first but the second token ≠ TSR Facing # | Facing # mismatch |
+  | 2 | The pair is written the other way round (facing first) | Site ID / Facing # reversed |
+  | 1 | Site ID appears but not as the first token | Site ID is not the first entry |
+  | 0 | TSR Site ID not in the cell at all | — (no match) |
+
+- Selection: over all PDF rows, `score = (activity code matches ? 100 : 0) + siteMatchLevel`; the highest score wins. The code is the primary check, so a code match outranks a better site level and the row is paired with the line it is really about.
+  - Code matches and level 4 → **pass**
+  - Code matches but level 1–3 → **fail** with the site/facing issue above
+  - Right site but a different code → **Activity Code mismatch** issue (the row still gets a position, so the order check still applies)
+  - No site match at all → **Row not found in PDF**
+- No de-duplication: the same Site ID never appears twice with the same activity code in one certificate, so each TSR row is matched independently.
 
 **Phase 2 — Bidirectional order check (per folder group):**
 
@@ -456,4 +478,4 @@ The `formatDate()` function remains in the codebase but is no longer used for Ex
 
 ## Service Worker Cache
 
-When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v24` → `lmp-invoicing-v25`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v29`.
+When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v24` → `lmp-invoicing-v25`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v30`.
