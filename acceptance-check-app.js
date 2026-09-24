@@ -9,8 +9,8 @@
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
-let _trackWb = null;
-let _accWb   = null;
+let _trk     = null; // parsed tracking file   (readTracking)
+let _acc     = null; // parsed acceptance sheet (readAcceptance)
 let _results = [];   // last comparison, re-rendered when "show matched" toggles
 
 // Area selector → tracking week prefix + acceptance-sheet Area values
@@ -137,8 +137,22 @@ function showProgress(id, show) {
   const e = el(id); if (e) e.style.display = show ? 'block' : 'none';
 }
 function checkReady() {
-  el('acc-btn-check').disabled = !(_trackWb && _accWb
-    && el('acc-area').value !== '' && el('acc-week').value.trim() !== '');
+  el('acc-btn-check').disabled = !(_trk && _acc
+    && el('acc-area').value !== '' && parseWeekInput(el('acc-week').value).length > 0);
+}
+
+// "36, 37" / "36-37" / "36 37" → [36, 37]
+function parseWeekInput(text) {
+  const nums = (String(text).match(/\d+/g) || []).map(Number).filter(n => n >= 1 && n <= 53);
+  return [...new Set(nums)].sort((a, b) => a - b);
+}
+
+function selectedYear() {
+  return parseInt(el('acc-year').value, 10) || null;
+}
+
+function trkSegInScope(seg, areaCfg, year) {
+  return seg.prefix === areaCfg.prefix && (!year || seg.year === null || seg.year === year);
 }
 
 // ---------------------------------------------------------------------------
@@ -160,19 +174,89 @@ function wireFilePicker(btnId, inputId, cardId, nameId, progressId, onLoad) {
       showError('Failed to open ' + file.name + ': ' + err.message);
     } finally {
       showProgress(progressId, false);
+      renderWeekChips();
       checkReady();
     }
   });
 }
 
 wireFilePicker('acc-btn-track', 'acc-input-track', 'acc-card-track',
-  'acc-track-filename', 'acc-track-progress', wb => { _trackWb = wb; });
+  'acc-track-filename', 'acc-track-progress', wb => { _trk = readTracking(wb); });
 wireFilePicker('acc-btn-acc', 'acc-input-acc', 'acc-card-acc',
-  'acc-acc-filename', 'acc-acc-progress', wb => { _accWb = wb; });
+  'acc-acc-filename', 'acc-acc-progress', wb => { _acc = readAcceptance(wb); });
 
 el('acc-year').value = new Date().getFullYear();
-el('acc-area').addEventListener('change', checkReady);
-el('acc-week').addEventListener('input', checkReady);
+['acc-area', 'acc-year', 'acc-week'].forEach(id => {
+  el(id).addEventListener(id === 'acc-area' ? 'change' : 'input', () => {
+    renderWeekChips();
+    checkReady();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Week picker — clickable chips for every week found in either file for the
+// selected area/year. Chips and the Weeks text box stay in sync both ways.
+// ---------------------------------------------------------------------------
+function availableWeeks() {
+  const areaCfg = AREAS[el('acc-area').value];
+  if (!areaCfg) return null;
+  const year = selectedYear();
+  const map  = new Map(); // week → { trk, acc } item counts
+  const bump = (w, side) => {
+    if (!map.has(w)) map.set(w, { trk: 0, acc: 0 });
+    map.get(w)[side]++;
+  };
+  if (_trk) _trk.rows.forEach(r => {
+    const ws = new Set();
+    r.weekSegs.forEach(s => { if (trkSegInScope(s, areaCfg, year)) s.weeks.forEach(w => ws.add(w)); });
+    ws.forEach(w => bump(w, 'trk'));
+  });
+  if (_acc) _acc.rows.forEach(r => {
+    if (areaMatches(areaCfg, r.area)) new Set(r.weeks).forEach(w => bump(w, 'acc'));
+  });
+  return [...map.entries()].sort((a, b) => a[0] - b[0]);
+}
+
+function renderWeekChips() {
+  const box   = el('acc-week-chips');
+  const weeks = availableWeeks();
+  if (!weeks || !(_trk || _acc)) {
+    box.innerHTML = '<span class="acc-chips-hint">Load a file and select an area to pick weeks from here &mdash; or type them in the Weeks box.</span>';
+    return;
+  }
+  if (!weeks.length) {
+    box.innerHTML = '<span class="acc-chips-hint">No weeks found for this area and year.</span>';
+    return;
+  }
+  const selected = new Set(parseWeekInput(el('acc-week').value));
+  box.innerHTML = weeks.map(([w, c]) =>
+    '<button type="button" class="acc-chip' + (selected.has(w) ? ' active' : '') +
+      (c.trk && c.acc ? '' : ' acc-chip-partial') + '" data-week="' + w + '"' +
+      ' title="Tracking: ' + c.trk + ' item' + (c.trk !== 1 ? 's' : '') +
+      ' · Acceptance: ' + c.acc + ' item' + (c.acc !== 1 ? 's' : '') + '">' + w + '</button>'
+  ).join('') +
+  (weeks.some(([, c]) => !(c.trk && c.acc))
+    ? '<span class="acc-chips-hint">Dashed = week found in only one of the two files.</span>' : '');
+}
+
+function setWeeks(list) {
+  el('acc-week').value = [...new Set(list)].sort((a, b) => a - b).join(', ');
+  renderWeekChips();
+  checkReady();
+}
+
+el('acc-week-chips').addEventListener('click', e => {
+  const chip = e.target.closest('.acc-chip');
+  if (!chip) return;
+  const w   = Number(chip.dataset.week);
+  const cur = parseWeekInput(el('acc-week').value);
+  setWeeks(cur.includes(w) ? cur.filter(x => x !== w) : cur.concat(w));
+});
+el('acc-weeks-all').addEventListener('click', () => setWeeks((availableWeeks() || []).map(([w]) => w)));
+el('acc-weeks-clear').addEventListener('click', () => setWeeks([]));
+
+renderWeekChips();
+
 el('acc-week').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !el('acc-btn-check').disabled) el('acc-btn-check').click();
 });
@@ -206,13 +290,13 @@ function sheetRows(ws) {
 }
 
 // Tracking file — sheet "Invoicing Track"; header row located by name
-function readTracking() {
-  const name = findSheet(_trackWb, 'invoicing track');
+function readTracking(wb) {
+  const name = findSheet(wb, 'invoicing track');
   if (!name) {
     throw new Error('Tracking file: sheet "Invoicing Track" not found. Available: ' +
-      _trackWb.SheetNames.join(', '));
+      wb.SheetNames.join(', '));
   }
-  const { rows, r0 } = sheetRows(_trackWb.Sheets[name]);
+  const { rows, r0 } = sheetRows(wb.Sheets[name]);
 
   let hdr = -1;
   for (let i = 0; i < Math.min(rows.length, 30); i++) {
@@ -260,13 +344,13 @@ function readTracking() {
 }
 
 // Acceptance sheet — tab "Total"; the table can start anywhere on the sheet
-function readAcceptance() {
-  const name = findSheet(_accWb, 'total');
+function readAcceptance(wb) {
+  const name = findSheet(wb, 'total');
   if (!name) {
     throw new Error('Acceptance sheet: tab "Total" not found. Available: ' +
-      _accWb.SheetNames.join(', '));
+      wb.SheetNames.join(', '));
   }
-  const { rows, r0 } = sheetRows(_accWb.Sheets[name]);
+  const { rows, r0 } = sheetRows(wb.Sheets[name]);
 
   let hdr = -1;
   for (let i = 0; i < rows.length; i++) {
@@ -326,19 +410,16 @@ function runCheck() {
   const areaCfg = AREAS[el('acc-area').value];
   if (!areaCfg) throw new Error('Please select an area.');
 
-  const weekSet = new Set((el('acc-week').value.match(/\d+/g) || [])
-    .map(Number).filter(n => n >= 1 && n <= 53));
-  if (!weekSet.size) throw new Error('Please enter a valid week number (1–53).');
+  const weekList = parseWeekInput(el('acc-week').value);
+  if (!weekList.length) throw new Error('Please select or enter at least one week (1–53).');
+  const weekSet = new Set(weekList);
 
-  const year = parseInt(el('acc-year').value, 10) || null;
-
-  const trk = readTracking();
-  const acc = readAcceptance();
+  const year = selectedYear();
+  const trk  = _trk;
+  const acc  = _acc;
 
   const trkInScope = r => r.weekSegs.some(s =>
-    s.prefix === areaCfg.prefix &&
-    (!year || s.year === null || s.year === year) &&
-    s.weeks.some(w => weekSet.has(w)));
+    trkSegInScope(s, areaCfg, year) && s.weeks.some(w => weekSet.has(w)));
   const accInScope = r => areaMatches(areaCfg, r.area) && r.weeks.some(w => weekSet.has(w));
 
   const trkScope = trk.rows.filter(trkInScope);
@@ -432,7 +513,7 @@ function runCheck() {
   return {
     results, trk, acc, trkScope, accScope,
     areaLabel: areaCfg.label, areaPrefix: areaCfg.prefix,
-    weekLabel: [...weekSet].sort((x, y) => x - y).join(' & '), year
+    weekLabel: weekList.join(', '), weekCount: weekList.length, year
   };
 }
 
@@ -454,7 +535,8 @@ function renderResults(out) {
     '  Week=' + colLetter(acc.col.week);
 
   let html =
-    '<p class="acc-scope">Week <strong>' + escHtml(out.weekLabel) + '</strong>' +
+    '<p class="acc-scope">Week' + (out.weekCount > 1 ? 's' : '') +
+    ' <strong>' + escHtml(out.weekLabel) + '</strong>' +
     (out.year ? ' / ' + out.year : '') + ' &mdash; <strong>' + escHtml(out.areaLabel) +
     '</strong> (tracking weeks starting with <code>' + out.areaPrefix + '-</code>)</p>' +
     '<div class="poc-stats-row acc-stats-row">' +

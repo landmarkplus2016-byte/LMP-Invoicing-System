@@ -470,8 +470,13 @@ el('tsrval-input-tsr').addEventListener('change', async (e) => {
 // ---------------------------------------------------------------------------
 el('tsrval-btn-folder').addEventListener('click', () => el('tsrval-input-folder').click());
 
-el('tsrval-input-folder').addEventListener('change', (e) => {
-  const files = Array.from(e.target.files);
+el('tsrval-input-folder').addEventListener('change', (e) => loadFolderFiles(Array.from(e.target.files)));
+
+// A folder dragged onto the card arrives from the shared drag-drop handler in
+// index.html, which rebuilds webkitRelativePath for every file it walks.
+el('tsrval-input-folder').addEventListener('folderdrop', (e) => loadFolderFiles(e.detail));
+
+function loadFolderFiles(files) {
   if (!files.length) return;
   clearError();
   showProgress('tsrval-folder-progress', true);
@@ -486,7 +491,7 @@ el('tsrval-input-folder').addEventListener('change', (e) => {
     showProgress('tsrval-folder-progress', false);
     checkReady();
   }, 50);
-});
+}
 
 // ---------------------------------------------------------------------------
 // Inputs

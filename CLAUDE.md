@@ -54,6 +54,14 @@ The app uses a **sidebar + main content** layout (not a top header + tab bar):
 
 The tab-switching JS updates both the `.nav-item` active state and the `#page-title` text. At ≤768px the sidebar collapses to a 60px icon-only strip.
 
+## Drag & Drop (all tabs)
+
+A single inline script in `index.html` makes every `.file-card` a drop target — no per-app code. A dropped file is put into the card's own `<input type="file">` via `DataTransfer` and a synthetic `change` event is dispatched, so each app's existing change handler (which reads `e.target.files`) loads it unchanged. It also adds a `.drop-hint` line to each card and toggles `.drag-over` while dragging. `dragover`/`drop` are cancelled on `window` so a missed drop doesn't navigate the browser to the file.
+
+Folder inputs (`webkitdirectory`, i.e. the TSR Mails Folder) can't be filled that way: the script walks the dropped directory with `webkitGetAsEntry()`, rebuilds `webkitRelativePath` (`Root/1/mail.msg`) on each file, and dispatches a `folderdrop` CustomEvent (`detail` = files) on the input. `tsr-validation-app.js` listens for it and calls the same `loadFolderFiles()` as its `change` handler. The POC tab keeps its own `#dropZone` handler.
+
+**New upload cards get drag & drop automatically** as long as they use `.file-card` with an `<input type="file">` inside.
+
 ## Sub-Tab Pattern
 
 Both the Contractor and Finance panels use a pill-style sub-tab UI. **Critical implementation rule: the two panels use different CSS classes to prevent JS cross-contamination.**
@@ -455,7 +463,9 @@ Summary stats (row count, New Total Price sum, LMP Portion sum, Contractor Porti
 
 ## Acceptance Check (`acceptance-check-app.js`)
 
-Inputs: Tracking file (sheet `Invoicing Track`, header row found by scanning the first 30 rows for "Logical Site" + "Acceptance Week"), Acceptance sheet (tab `Total`, header row found anywhere by scanning for "Site_ID" + "Item_Description" — the table does not start at A1), an **Area** (`Delta` / `Cairo-Giza-Upper` / `Alex`), a **Week** (one or more numbers) and a **Year** (defaults to the current year). All element IDs use the `acc-*` prefix.
+Inputs: Tracking file (sheet `Invoicing Track`, header row found by scanning the first 30 rows for "Logical Site" + "Acceptance Week"), Acceptance sheet (tab `Total`, header row found anywhere by scanning for "Site_ID" + "Item_Description" — the table does not start at A1), an **Area** (`Delta` / `Cairo-Giza-Upper` / `Alex`), one or more **Weeks** and a **Year** (defaults to the current year). All element IDs use the `acc-*` prefix.
+
+Both files are parsed as soon as they load (`_trk` / `_acc`), so the **week picker** can list every week found in either file for the selected area/year as clickable chips (`#acc-week-chips`). Chips and the Weeks text box (`36, 37`) stay in sync both ways; a dashed chip means that week exists in only one of the two files. A row is in scope if it shares **any** week with the selection.
 
 **Scope filtering:**
 - Tracking: `Acceptance Week` is split on `/` into segments like `D-W36-W37-2026`; a row is in scope if any segment has the area prefix (`D` Delta, `U` Cairo-Giza-Upper, `A` Alex), the selected year (or no year), and shares a week number with the selection. Cancelled rows are skipped.
@@ -494,4 +504,4 @@ The `formatDate()` function remains in the codebase but is no longer used for Ex
 
 ## Service Worker Cache
 
-When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v24` → `lmp-invoicing-v25`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v31`.
+When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v24` → `lmp-invoicing-v25`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v32`.

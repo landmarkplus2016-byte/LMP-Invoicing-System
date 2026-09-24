@@ -808,20 +808,30 @@
                 </select>
               </div>
               <div class="acc-control">
-                <label for="acc-week">Week</label>
-                <input type="text" id="acc-week" class="acc-input" inputmode="numeric" placeholder="e.g. 37" />
-              </div>
-              <div class="acc-control">
                 <label for="acc-year">Year</label>
                 <input type="number" id="acc-year" class="acc-input" min="2000" max="2100" />
               </div>
+              <div class="acc-control">
+                <label for="acc-week">Weeks</label>
+                <input type="text" id="acc-week" class="acc-input acc-input-week" placeholder="e.g. 36, 37" />
+              </div>
               <button id="acc-btn-check" class="btn-primary" disabled>&#128269;&nbsp; Check Acceptance</button>
+            </div>
+
+            <div class="acc-weeks-pick">
+              <div class="acc-weeks-head">
+                <span>Available weeks</span>
+                <button type="button" id="acc-weeks-all" class="acc-link-btn">Select all</button>
+                <button type="button" id="acc-weeks-clear" class="acc-link-btn">Clear</button>
+              </div>
+              <div id="acc-week-chips" class="acc-chips"></div>
             </div>
 
             <p class="card-hint" style="margin-top:0.75rem;">
               Tracking rows are selected by Acceptance Week prefix (<code>D-</code> Delta,
               <code>U-</code> Cairo-Giza-Upper, <code>A-</code> Alex) and week number &mdash;
               <code>D-W36-W37-2026</code> is included when checking week 36 or 37.
+              Click weeks in the list (or type them) to check several at once.
               The acceptance sheet is read from the <em>Total</em> tab.
             </p>
           </section>
@@ -953,6 +963,78 @@
           subpanels.forEach(p => {
             p.style.display = p.id === target ? 'flex' : 'none';
           });
+        });
+      });
+    })();
+  </script>
+
+  <!-- Drag & drop onto every upload card (all tabs).
+       A dropped file is placed into the card's own <input type="file"> and a
+       'change' event is fired, so each app's existing handler loads it exactly
+       as if it had been picked with Browse. Folder inputs (webkitdirectory)
+       receive a 'folderdrop' CustomEvent carrying the walked files instead. -->
+  <script>
+    (function () {
+      // Stop the browser from opening a file that misses an upload box
+      ['dragover', 'drop'].forEach(t => window.addEventListener(t, e => e.preventDefault()));
+
+      // Walk a dropped folder; rebuild webkitRelativePath ("Root/1/mail.msg")
+      async function walkEntry(entry, path, out) {
+        if (entry.isFile) {
+          const file = await new Promise((res, rej) => entry.file(res, rej));
+          Object.defineProperty(file, 'webkitRelativePath', { value: path + file.name });
+          out.push(file);
+        } else if (entry.isDirectory) {
+          const reader = entry.createReader();
+          let batch;
+          do {
+            batch = await new Promise((res, rej) => reader.readEntries(res, rej));
+            for (const child of batch) await walkEntry(child, path + entry.name + '/', out);
+          } while (batch.length);
+        }
+      }
+
+      document.querySelectorAll('.file-card').forEach(card => {
+        const input = card.querySelector('input[type="file"]');
+        if (!input) return;
+        const isFolder = input.hasAttribute('webkitdirectory');
+
+        const hint = document.createElement('span');
+        hint.className = 'drop-hint';
+        hint.textContent = isFolder ? 'or drag a folder here' : 'or drag a file here';
+        input.parentNode.insertBefore(hint, input);
+
+        let depth = 0;   // dragenter/leave also fire for child elements
+
+        card.addEventListener('dragenter', e => {
+          e.preventDefault(); depth++; card.classList.add('drag-over');
+        });
+        card.addEventListener('dragleave', () => {
+          if (--depth <= 0) { depth = 0; card.classList.remove('drag-over'); }
+        });
+        card.addEventListener('dragover', e => {
+          e.preventDefault(); e.dataTransfer.dropEffect = 'copy';
+        });
+        card.addEventListener('drop', async e => {
+          e.preventDefault();
+          depth = 0; card.classList.remove('drag-over');
+
+          if (isFolder) {
+            // Entries must be read synchronously, before any await
+            const entries = Array.from(e.dataTransfer.items || [])
+              .map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+            const files = [];
+            for (const entry of entries) await walkEntry(entry, '', files);
+            if (files.length) input.dispatchEvent(new CustomEvent('folderdrop', { detail: files }));
+            return;
+          }
+
+          const file = e.dataTransfer.files[0];
+          if (!file) return;
+          const dt = new DataTransfer();
+          dt.items.add(file);
+          input.files = dt.files;
+          input.dispatchEvent(new Event('change'));
         });
       });
     })();
