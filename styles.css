@@ -1497,3 +1497,205 @@ footer p + p {
     min-width: 140px;
   }
 }
+
+/* =============================================================================
+   Acceptance Check Tab
+   ============================================================================= */
+
+.acc-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 1rem;
+  margin-top: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.acc-control {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.acc-control label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #1a3a5c;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.acc-input {
+  width: 110px;
+  padding: 0.45rem 0.75rem;
+  border: 1.5px solid #c8d6e8;
+  border-radius: 6px;
+  font-size: 1rem;
+  color: #1a1a2e;
+  background: #fff;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.acc-input-area {
+  width: 190px;
+}
+
+.acc-input:focus {
+  border-color: #0070C0;
+}
+
+.acc-col-info {
+  font-size: 0.78rem;
+  color: #4a5568;
+  background: #f7fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 5px;
+  padding: 0.4rem 0.75rem;
+  margin-bottom: 0.75rem;
+  font-family: monospace;
+  white-space: nowrap;
+  overflow-x: auto;
+}
+
+.acc-scope {
+  margin: 0 0 0.75rem;
+  color: #1a3a5c;
+}
+
+.acc-stats-row {
+  margin-bottom: 1rem;
+}
+
+.acc-stat-pass {
+  background: #f0fff4;
+  border-color: #2f855a;
+}
+.acc-stat-pass .poc-stat-value {
+  color: #2f855a;
+}
+
+.acc-stat-fail {
+  background: #fdecea;
+  border-color: #c53030;
+}
+.acc-stat-fail .poc-stat-value {
+  color: #c53030;
+}
+
+.acc-banner {
+  border-radius: 6px;
+  padding: 0.65rem 1rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+.acc-banner-ok {
+  background: #f0fff4;
+  border: 1px solid #9ae6b4;
+  color: #276749;
+}
+.acc-banner-fail {
+  background: #fff5f5;
+  border: 1px solid #feb2b2;
+  color: #9b2c2c;
+}
+
+.acc-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.88rem;
+  color: #1a3a5c;
+  margin-bottom: 0.75rem;
+  cursor: pointer;
+}
+
+.acc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+
+.acc-table th {
+  background: #0070C0;
+  color: #fff;
+  font-weight: 700;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid #005a9e;
+  white-space: nowrap;
+  font-size: 0.8rem;
+}
+
+.acc-table td {
+  padding: 0.45rem 0.6rem;
+  border: 1px solid #e2e8f0;
+  vertical-align: top;
+}
+
+.acc-row-pass { background: #f0fff4; }
+.acc-row-fail { background: #fff5f5; }
+.acc-row-pass:hover { background: #c6f6d5; }
+.acc-row-fail:hover { background: #fed7d7; }
+
+.acc-site {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.acc-item-col {
+  min-width: 200px;
+  max-width: 340px;
+  white-space: normal;
+  word-break: break-word;
+}
+
+/* The tracking value that needs correcting */
+.acc-item-bad {
+  color: #9b2c2c;
+  font-weight: 700;
+}
+
+.acc-sub {
+  font-size: 0.75rem;
+  color: #718096;
+}
+
+.acc-notes-col {
+  min-width: 180px;
+}
+
+.acc-note {
+  font-size: 0.8rem;
+  color: #744210;
+  margin-bottom: 0.2rem;
+  line-height: 1.4;
+}
+
+.acc-badge {
+  display: inline-block;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.acc-badge-match                           { background: #c6f6d5; color: #276749; }
+.acc-badge-mismatch                        { background: #fed7d7; color: #9b2c2c; }
+.acc-badge-trk_only, .acc-badge-site_trk_only { background: #feebc8; color: #7b341e; }
+.acc-badge-acc_only, .acc-badge-site_acc_only { background: #e9d8fd; color: #553c9a; }
+
+@media (max-width: 768px) {
+  .acc-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .acc-input,
+  .acc-input-area {
+    width: 100%;
+  }
+  .acc-table {
+    font-size: 0.78rem;
+  }
+  .acc-item-col {
+    min-width: 140px;
+  }
+}

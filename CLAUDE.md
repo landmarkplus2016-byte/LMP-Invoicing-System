@@ -10,7 +10,7 @@ A static, no-build PWA (Progressive Web App) for the Landmark Plus Telecom Depar
 
 ## Architecture
 
-All logic lives in five files loaded by `index.html` as plain `<script>` tags:
+All logic lives in six files loaded by `index.html` as plain `<script>` tags:
 
 | File | Purpose |
 |---|---|
@@ -19,7 +19,8 @@ All logic lives in five files loaded by `index.html` as plain `<script>` tags:
 | `tsr-validation-app.js` | TSR Sub Validation — validates a TSR submission against Excel/PDF mail attachments |
 | `contractor-app.js` | Contractor Invoices — four sub-tabs (2026 Tasks, Pre-2026 Tasks, TX-RX Tasks, POC Invoices), generates one styled XLSX per contractor |
 | `finance-app.js` | Finance Sheet — two sub-tabs (TX-RF Track, POC Tracking), filters by invoice numbers, exports styled XLSX |
-| `styles.css` | All styling for all five tabs, sub-tab bars, and shared components |
+| `acceptance-check-app.js` | Acceptance Check — compares tracking line items for one week + area against the acceptance sheet (`Total` tab) and lists mismatches |
+| `styles.css` | All styling for all six tabs, sub-tab bars, and shared components |
 | `sw.js` | Service worker — caches app shell for offline use |
 
 All app files are wrapped in IIFEs to avoid global namespace collisions. They share two CDN libraries loaded in `index.html`:
@@ -452,6 +453,21 @@ Filter logic uses case-insensitive `includes` (not exact match), so partial stri
 
 Summary stats (row count, New Total Price sum, LMP Portion sum, Contractor Portion sum) update live on filter change for both sub-tabs.
 
+## Acceptance Check (`acceptance-check-app.js`)
+
+Inputs: Tracking file (sheet `Invoicing Track`, header row found by scanning the first 30 rows for "Logical Site" + "Acceptance Week"), Acceptance sheet (tab `Total`, header row found anywhere by scanning for "Site_ID" + "Item_Description" — the table does not start at A1), an **Area** (`Delta` / `Cairo-Giza-Upper` / `Alex`), a **Week** (one or more numbers) and a **Year** (defaults to the current year). All element IDs use the `acc-*` prefix.
+
+**Scope filtering:**
+- Tracking: `Acceptance Week` is split on `/` into segments like `D-W36-W37-2026`; a row is in scope if any segment has the area prefix (`D` Delta, `U` Cairo-Giza-Upper, `A` Alex), the selected year (or no year), and shares a week number with the selection. Cancelled rows are skipped.
+- Acceptance: `Area` starts with `delta` / `cairo`|`giza`|`upper` / `alex`, and `Week` (e.g. `34`, `36--37`, `36—37`; a cell Excel turned into a date like 3-Apr reads as weeks 3 and 4) shares a week number with the selection.
+
+**Matching** (per Site ID — `Logical Site ID` vs `Site_ID`, uppercased, leading zeros stripped from numeric IDs):
+- Line items compare by catalogue code (`TX03 - …` → `TX03`, `EX6` → `EX06`); items with no code compare by full text. Each acceptance row matches at most one tracking row (count-aware).
+- Leftovers are paired as **Line item mismatch**, preferring the same code family (TX↔TX), then the same facing. Unpaired leftovers are **Missing in acceptance** / **Missing in tracking**; a site present on only one side is **Site not in acceptance** / **Site not in tracking**.
+- Notes point to the same site + item elsewhere (other week/area) in the other file, and to near-identical Site IDs (same digits, e.g. `3844` vs `U3844`), to help spot a wrong week or site rather than a wrong item.
+
+Results show the tracking Excel row number for every issue so it can be corrected in the master tracking. Matched rows are hidden unless "Show matched rows" is ticked.
+
 ## Date Output Convention
 
 **All apps** write date values as native Excel dates (JS `Date` objects passed directly to ExcelJS) with number format `dd-mmm-yy`. Do **not** use the `formatDate()` string helper when writing to ExcelJS cells — that produces text strings that Excel cannot sort or filter as dates.
@@ -478,4 +494,4 @@ The `formatDate()` function remains in the codebase but is no longer used for Ex
 
 ## Service Worker Cache
 
-When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v24` → `lmp-invoicing-v25`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v30`.
+When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v24` → `lmp-invoicing-v25`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v31`.

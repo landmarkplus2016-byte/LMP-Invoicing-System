@@ -58,6 +58,10 @@
           <span class="nav-icon">&#128200;</span>
           <span class="nav-label">Finance Sheet</span>
         </button>
+        <button class="nav-item" role="tab" aria-selected="false" data-tab="acccheck">
+          <span class="nav-icon">&#128269;</span>
+          <span class="nav-label">Acceptance Check</span>
+        </button>
       </nav>
 
       <div class="sidebar-footer">
@@ -759,6 +763,89 @@
         </main>
       </div>
 
+      <!-- ================================================================
+           TAB: Acceptance Check
+           ================================================================ -->
+      <div id="panel-acccheck" class="tab-panel" style="display:none">
+        <main class="tsr-main">
+
+          <div id="acc-error" role="alert" class="con-error-msg" style="display:none"></div>
+
+          <!-- Upload + Week / Area -->
+          <section class="card">
+            <h2>Upload Files &amp; Select Week</h2>
+
+            <div class="file-cards">
+
+              <div id="acc-card-track" class="file-card">
+                <div class="file-icon">&#128193;</div>
+                <div class="file-label">Task Tracking File (.xlsm)</div>
+                <button id="acc-btn-track" class="btn-secondary">Browse File</button>
+                <input type="file" id="acc-input-track" accept=".xlsm,.xlsx" style="display:none" />
+                <span id="acc-track-filename" class="filename-display">No file selected</span>
+                <div class="file-progress" id="acc-track-progress"></div>
+              </div>
+
+              <div id="acc-card-acc" class="file-card">
+                <div class="file-icon">&#128203;</div>
+                <div class="file-label">Acceptance Sheet (.xlsx)</div>
+                <button id="acc-btn-acc" class="btn-secondary">Browse File</button>
+                <input type="file" id="acc-input-acc" accept=".xlsx,.xlsm,.xls,.xlsb" style="display:none" />
+                <span id="acc-acc-filename" class="filename-display">No file selected</span>
+                <div class="file-progress" id="acc-acc-progress"></div>
+              </div>
+
+            </div>
+
+            <div class="acc-controls">
+              <div class="acc-control">
+                <label for="acc-area">Area</label>
+                <select id="acc-area" class="acc-input acc-input-area">
+                  <option value="">-- Select area --</option>
+                  <option value="delta">Delta</option>
+                  <option value="cgu">Cairo-Giza-Upper</option>
+                  <option value="alex">Alex</option>
+                </select>
+              </div>
+              <div class="acc-control">
+                <label for="acc-week">Week</label>
+                <input type="text" id="acc-week" class="acc-input" inputmode="numeric" placeholder="e.g. 37" />
+              </div>
+              <div class="acc-control">
+                <label for="acc-year">Year</label>
+                <input type="number" id="acc-year" class="acc-input" min="2000" max="2100" />
+              </div>
+              <button id="acc-btn-check" class="btn-primary" disabled>&#128269;&nbsp; Check Acceptance</button>
+            </div>
+
+            <p class="card-hint" style="margin-top:0.75rem;">
+              Tracking rows are selected by Acceptance Week prefix (<code>D-</code> Delta,
+              <code>U-</code> Cairo-Giza-Upper, <code>A-</code> Alex) and week number &mdash;
+              <code>D-W36-W37-2026</code> is included when checking week 36 or 37.
+              The acceptance sheet is read from the <em>Total</em> tab.
+            </p>
+          </section>
+
+          <!-- Loading -->
+          <div id="acc-loading" class="con-loading-wrap" style="display:none">
+            <div class="spinner"></div>
+            <p>Comparing line items&hellip;</p>
+          </div>
+
+          <!-- Results -->
+          <section id="acc-results" class="card" style="display:none">
+            <h2>Acceptance Check Results</h2>
+            <div id="acc-col-info" class="acc-col-info"></div>
+            <div id="acc-summary"></div>
+            <label class="acc-toggle">
+              <input type="checkbox" id="acc-show-matched" /> Show matched rows
+            </label>
+            <div id="acc-table-wrap" class="table-wrapper"></div>
+          </section>
+
+        </main>
+      </div>
+
       <!-- Unified footer -->
       <footer>
         <p>LMP Invoicing System &mdash; Landmark Plus Telecom Department</p>
@@ -774,6 +861,7 @@
   <script src="tsr-validation-app.js"></script>
   <script src="contractor-app.js"></script>
   <script src="finance-app.js"></script>
+  <script src="acceptance-check-app.js"></script>
 
   <!-- Tab switching logic -->
   <script>
@@ -787,7 +875,8 @@
         tsr:        'TSR Sub Prep',
         tsrval:     'TSR Sub Validation',
         contractor: 'Contractor Invoices',
-        finance:    'Finance Sheet'
+        finance:    'Finance Sheet',
+        acccheck:   'Acceptance Check'
       };
 
       navItems.forEach(btn => {
