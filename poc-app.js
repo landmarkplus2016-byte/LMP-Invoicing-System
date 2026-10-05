@@ -14,7 +14,7 @@ const COL_PATTERNS = {
   vfOwner:               ['vf owner', 'vfowner', 'vf_owner'],
   installationStatus:    ['installation status', 'install status', 'inst. status', 'inst status'],
   installationDate:      ['installation date', 'install date', 'inst. date', 'inst date'],
-  installInvoicingDate:  ['installation invoicing date', 'install invoicing date',
+  installInvoicingDate:  ['installation invoicing date', 'instalation invoicing date', 'install invoicing date',
                           'invoicing date ins', 'invoicing date (ins)', 'ins invoicing date',
                           'inst invoicing date', 'inst. invoicing'],
   migrationStatus:       ['migration status', 'migr. status', 'mig status', 'mig. status'],
@@ -85,14 +85,6 @@ function formatDate(d) {
   return `${day}-${months[d.getMonth()]}-${String(d.getFullYear()).slice(-2)}`;
 }
 
-function eqCI(val, target) {
-  return String(val ?? '').trim().toLowerCase() === target.toLowerCase();
-}
-
-function notEqCI(val, target) {
-  return String(val ?? '').trim().toLowerCase() !== target.toLowerCase();
-}
-
 // ---------------------------------------------------------------------------
 // Header row detection
 // ---------------------------------------------------------------------------
@@ -121,9 +113,47 @@ function detectHeaderRow(rows) {
 }
 
 // ---------------------------------------------------------------------------
+// Invoice batch values — the labels typed in the Invoicing Date columns
+// (e.g. "new oct", "oct"); older rows may hold real dates instead.
+// ---------------------------------------------------------------------------
+function batchKey(val) {
+  if (val instanceof Date) {
+    return 'd:' + val.getFullYear() + '-' + (val.getMonth() + 1) + '-' + val.getDate();
+  }
+  if (isBlank(val)) return '';
+  return 't:' + String(val).trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function batchLabel(val) {
+  return val instanceof Date ? formatDate(val) : String(val).trim().replace(/\s+/g, ' ');
+}
+
+function collectBatches(dataRows, colMap) {
+  const map = new Map();
+  function add(val, field) {
+    const key = batchKey(val);
+    if (!key) return;
+    if (!map.has(key)) {
+      map.set(key, { key, label: batchLabel(val), isDate: val instanceof Date,
+                     time: val instanceof Date ? val.getTime() : 0, ins: 0, mig: 0 });
+    }
+    map.get(key)[field]++;
+  }
+  for (const row of dataRows) {
+    if (colMap.installInvoicingDate !== -1) add(cell(row, colMap.installInvoicingDate), 'ins');
+    if (colMap.migInvoicingDate     !== -1) add(cell(row, colMap.migInvoicingDate),     'mig');
+  }
+  // Text labels first (alphabetical), then dates newest first
+  return [...map.values()].sort((a, b) => {
+    if (a.isDate !== b.isDate) return a.isDate ? 1 : -1;
+    return a.isDate ? b.time - a.time : a.label.localeCompare(b.label);
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Core processing
 // ---------------------------------------------------------------------------
-function processExcel(fileData) {
+function parseWorkbook(fileData) {
   const workbook = XLSX.read(fileData, { type: 'array', cellDates: true });
   const TARGET_SHEET = 'POC3 Tracking';
   const sheetName = workbook.SheetNames.find(
@@ -144,18 +174,23 @@ function processExcel(fileData) {
   const dataRows = rows.slice(headerRowIdx + 1).filter(r => r.some(c => c !== ''));
   const colMap = buildColumnMap(headers);
 
-  const step1 = dataRows.filter(row => {
-    return eqCI(cell(row, colMap.installationStatus), 'done') &&
-           isBlank(cell(row, colMap.installInvoicingDate)) &&
-           notEqCI(cell(row, colMap.lineItem), 'POC2 Migration');
-  });
+  if (colMap.installInvoicingDate === -1 && colMap.migInvoicingDate === -1) {
+    throw new Error('Neither "Installation Invoicing Date ins" nor "Migration Invoicing Date mig" column was found in the header row.');
+  }
 
-  const step2 = dataRows.filter(row => {
-    return eqCI(cell(row, colMap.migrationStatus), 'done') &&
-           eqCI(cell(row, colMap.acceptanceStatus), 'fac') &&
-           isBlank(cell(row, colMap.migInvoicingDate)) &&
-           notEqCI(cell(row, colMap.lineItem), 'POC2 Migration');
-  });
+  return { headers, dataRows, colMap, batches: collectBatches(dataRows, colMap) };
+}
+
+// Step 1 = rows whose Installation Invoicing Date holds the selected batch,
+// Step 2 = rows whose Migration Invoicing Date holds it.
+function analyzeBatch(parsed, selectedKey) {
+  const { headers, dataRows, colMap } = parsed;
+
+  const step1 = colMap.installInvoicingDate === -1 ? [] :
+    dataRows.filter(row => batchKey(cell(row, colMap.installInvoicingDate)) === selectedKey);
+
+  const step2 = colMap.migInvoicingDate === -1 ? [] :
+    dataRows.filter(row => batchKey(cell(row, colMap.migInvoicingDate)) === selectedKey);
 
   function extractRow(row, stepLabel) {
     const out = { _step: stepLabel };
@@ -182,12 +217,11 @@ function processExcel(fileData) {
   const totalAmount = step1Amount + step2Amount;
 
   const warnings = [];
-  const criticalKeys = ['installationStatus', 'lineItem'];
-  for (const key of criticalKeys) {
-    if (colMap[key] === -1) {
-      const patterns = COL_PATTERNS[key];
-      warnings.push(`Column not found: expected something like "${patterns[0]}". Check your header row.`);
-    }
+  if (colMap.installInvoicingDate === -1) {
+    warnings.push('Column "Installation Invoicing Date ins" not found — no installation rows can be selected.');
+  }
+  if (colMap.migInvoicingDate === -1) {
+    warnings.push('Column "Migration Invoicing Date mig" not found — no migration rows can be selected.');
   }
   const computedKeys = new Set(['invoiceAmount']);
   for (const { label, key } of OUTPUT_COLUMNS) {
@@ -311,7 +345,11 @@ async function exportToExcel(result, originalFileName) {
 // UI Logic
 // ---------------------------------------------------------------------------
 let currentResult = null;
+let currentParsed = null;
 let currentFileName = '';
+
+const batchWrap     = document.getElementById('pocBatchWrap');
+const batchSelect   = document.getElementById('pocBatchSelect');
 
 const dropZone      = document.getElementById('dropZone');
 const fileInput     = document.getElementById('fileInput');
@@ -343,18 +381,66 @@ function setFile(file) {
   fileNameEl.textContent = file.name;
   fileInfo.hidden = false;
   dropZone.hidden = true;
+  currentParsed = null;
+  batchWrap.hidden = true;
   clearResults();
   processFile(file);
 }
 
 function clearFile() {
   currentFileName = '';
+  currentParsed = null;
   fileInput.value = '';
   fileInfo.hidden = true;
   dropZone.hidden = false;
+  batchWrap.hidden = true;
+  batchSelect.innerHTML = '';
   clearResults();
   warningsEl.hidden = true;
 }
+
+function populateBatches(batches) {
+  const opt = (b) => {
+    const parts = [];
+    if (b.ins) parts.push(`${b.ins} ins`);
+    if (b.mig) parts.push(`${b.mig} mig`);
+    const o = document.createElement('option');
+    o.value = b.key;
+    o.textContent = `${b.label}  (${parts.join(' / ')})`;
+    return o;
+  };
+  batchSelect.innerHTML = '<option value="">— Select invoice batch —</option>';
+  const text  = batches.filter(b => !b.isDate);
+  const dates = batches.filter(b => b.isDate);
+  if (text.length) {
+    const g = document.createElement('optgroup');
+    g.label = 'Batch labels';
+    text.forEach(b => g.appendChild(opt(b)));
+    batchSelect.appendChild(g);
+  }
+  if (dates.length) {
+    const g = document.createElement('optgroup');
+    g.label = 'Invoiced dates';
+    dates.forEach(b => g.appendChild(opt(b)));
+    batchSelect.appendChild(g);
+  }
+  batchWrap.hidden = false;
+}
+
+function runBatch() {
+  clearResults();
+  if (!currentParsed || !batchSelect.value) return;
+  try {
+    currentResult = analyzeBatch(currentParsed, batchSelect.value);
+    renderResults(currentResult);
+    if (currentResult.warnings.length > 0) showWarning(currentResult.warnings);
+    else warningsEl.hidden = true;
+  } catch (err) {
+    showWarning([`Error: ${err.message}`]);
+  }
+}
+
+batchSelect.addEventListener('change', runBatch);
 
 function clearResults() {
   currentResult = null;
@@ -395,18 +481,18 @@ function processFile(file) {
       setProgress(40, 'Parsing workbook…');
       const data = new Uint8Array(e.target.result);
 
-      setProgress(65, 'Applying filters…');
-      currentResult = processExcel(data);
+      setProgress(70, 'Reading invoice batches…');
+      currentParsed = parseWorkbook(data);
 
-      setProgress(90, 'Building results…');
-      renderResults(currentResult);
-
-      setProgress(100, 'Done!');
+      setProgress(100, 'Done! Select an invoice batch.');
       setTimeout(() => { progressWrap.hidden = true; }, 1200);
 
-      if (currentResult.warnings.length > 0) {
-        showWarning(currentResult.warnings);
+      if (currentParsed.batches.length === 0) {
+        showWarning(['No values found in the Installation / Migration Invoicing Date columns. Fill them with the batch name (e.g. "new oct") first.']);
+        return;
       }
+      populateBatches(currentParsed.batches);
+      batchSelect.focus();
     } catch (err) {
       progressWrap.hidden = true;
       showWarning([`Error: ${err.message}`]);

@@ -78,12 +78,13 @@ If both panels used the same class, the `querySelectorAll` in one panel's switch
 1. User drops/selects an Excel file
 2. SheetJS reads it → targets sheet named **`POC3 Tracking`** (exact name required)
 3. `detectHeaderRow()` scans the first 30 rows and scores each against `COL_PATTERNS` to find the real header row (handles files with metadata rows above headers)
-4. Two filter passes produce two arrays:
-   - **Step 1 (Installation):** `installationStatus == "done"` AND `installInvoicingDate` blank AND `lineItem != "POC2 Migration"`
-   - **Step 2 (Migration):** `migrationStatus == "done"` AND `acceptanceStatus == "fac"` AND `migInvoicingDate` blank AND `lineItem != "POC2 Migration"`
-5. `Invoice Amount` = `Total Amount / 2` for every row
-6. ExcelJS writes the output with colour-coded column headers (blue = tracking fields, green = acceptance fields, gold = financial fields) plus a merged total amount cell at row 1
-7. Date columns (Installation Date, Migration Date, FAC Date) are written as native Excel date values with format `dd-mmm-yy` — not as strings
+4. `parseWorkbook()` collects every distinct value in the **Installation Invoicing Date ins** and **Migration Invoicing Date mig** columns (`collectBatches`) and fills the **Invoice Batch** `<select>` (`#pocBatchSelect`). Text labels the user types for the month's batch (`new oct`, `oct`) are listed first; old rows holding real dates are listed after, newest first. Values compare via `batchKey()` (case/whitespace-insensitive text, or calendar day for dates). Nothing is analysed until a batch is selected.
+5. `analyzeBatch()` produces two arrays — no status/FAC/line-item filtering, the batch label is the decision:
+   - **Step 1 (Installation):** `installInvoicingDate` == selected batch
+   - **Step 2 (Migration):** `migInvoicingDate` == selected batch
+6. `Invoice Amount` = `Total Amount / 2` for every row
+7. ExcelJS writes the output with colour-coded column headers (blue = tracking fields, green = acceptance fields, gold = financial fields) plus a merged total amount cell at row 1
+8. Date columns (Installation Date, Migration Date, FAC Date) are written as native Excel date values with format `dd-mmm-yy` — not as strings
 
 ## TSR Sub Prep Data Flow (`tsr-app.js`)
 
@@ -504,4 +505,4 @@ The `formatDate()` function remains in the codebase but is no longer used for Ex
 
 ## Service Worker Cache
 
-When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v24` → `lmp-invoicing-v25`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v32`.
+When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v24` → `lmp-invoicing-v25`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v33`.

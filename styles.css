@@ -530,6 +530,20 @@ footer p + p {
   white-space: nowrap;
 }
 
+/* Invoice batch selector */
+.poc-batch-group {
+  margin-top: 1rem;
+}
+
+.poc-batch-group select {
+  cursor: pointer;
+}
+
+.poc-batch-hint {
+  font-size: 0.8rem;
+  color: #667;
+}
+
 /* Progress bar */
 .progress-wrap {
   margin-top: 1rem;
