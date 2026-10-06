@@ -28,6 +28,16 @@ const COL_PATTERNS = {
   lineItem:              ['line item', 'lineitem', 'line_item'],
   price:                 ['price', 'unit price'],
   totalAmount:           ['total amount', 'total', 'amount'],
+  instContractor:        ['inst contractor', 'installation contractor', 'install contractor'],
+  migContractor:         ['migr contractor', 'migration contractor', 'mig contractor'],
+};
+
+// Headers containing these words are skipped for the given key — keeps
+// "INST Contractor Invoice#" / "Contractor Portion ins" from being taken
+// as the contractor name column.
+const COL_EXCLUDE = {
+  instContractor: ['invoice', 'portion'],
+  migContractor:  ['invoice', 'portion'],
 };
 
 const OUTPUT_COLUMNS = [
@@ -35,6 +45,7 @@ const OUTPUT_COLUMNS = [
   { label: 'Site ID',             key: 'siteId'            },
   { label: 'Area',                key: 'area'              },
   { label: 'VF Owner',            key: 'vfOwner'           },
+  { label: 'Contractor',          key: 'contractor'        },
   { label: 'Installation Status', key: 'installationStatus'},
   { label: 'Installation Date',   key: 'installationDate'  },
   { label: 'Migration Status',    key: 'migrationStatus'   },
@@ -50,10 +61,10 @@ const OUTPUT_COLUMNS = [
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-function findColumn(headers, patterns) {
+function findColumn(headers, patterns, exclude = []) {
   const lower = headers.map(h => String(h ?? '').toLowerCase().trim());
   for (const pattern of patterns) {
-    const idx = lower.findIndex(h => h.includes(pattern));
+    const idx = lower.findIndex(h => h.includes(pattern) && !exclude.some(x => h.includes(x)));
     if (idx !== -1) return idx;
   }
   return -1;
@@ -62,7 +73,7 @@ function findColumn(headers, patterns) {
 function buildColumnMap(headers) {
   const map = {};
   for (const [key, patterns] of Object.entries(COL_PATTERNS)) {
-    map[key] = findColumn(headers, patterns);
+    map[key] = findColumn(headers, patterns, COL_EXCLUDE[key]);
   }
   return map;
 }
@@ -198,6 +209,9 @@ function analyzeBatch(parsed, selectedKey) {
       if (key === 'invoiceAmount') {
         const rawTotal = parseFloat(String(cell(row, colMap.totalAmount) ?? '').replace(/,/g, '')) || 0;
         out[label] = rawTotal / 2;
+      } else if (key === 'contractor') {
+        // Installation rows carry the INST contractor, migration rows the MIGR contractor
+        out[label] = cell(row, stepLabel === 1 ? colMap.instContractor : colMap.migContractor);
       } else {
         out[label] = cell(row, colMap[key]);
       }
@@ -223,7 +237,13 @@ function analyzeBatch(parsed, selectedKey) {
   if (colMap.migInvoicingDate === -1) {
     warnings.push('Column "Migration Invoicing Date mig" not found — no migration rows can be selected.');
   }
-  const computedKeys = new Set(['invoiceAmount']);
+  if (colMap.instContractor === -1) {
+    warnings.push('Column "INST Contractor" not found — Contractor will be empty for installation rows.');
+  }
+  if (colMap.migContractor === -1) {
+    warnings.push('Column "MIGR Contractor" not found — Contractor will be empty for migration rows.');
+  }
+  const computedKeys = new Set(['invoiceAmount', 'contractor']);
   for (const { label, key } of OUTPUT_COLUMNS) {
     if (!computedKeys.has(key) && colMap[key] === -1) {
       warnings.push(`Output column "${label}" not found in the source file — it will be empty.`);
@@ -251,6 +271,7 @@ const HEADER_STYLES = {
   'Site ID':             { fill: '0070C0', font: 'FFFFFF' },
   'Area':                { fill: '0070C0', font: 'FFFFFF' },
   'VF Owner':            { fill: '0070C0', font: 'FFFFFF' },
+  'Contractor':          { fill: '0070C0', font: 'FFFFFF' },
   'Installation Status': { fill: '0070C0', font: 'FFFFFF' },
   'Installation Date':   { fill: '0070C0', font: 'FFFFFF' },
   'Migration Status':    { fill: '0070C0', font: 'FFFFFF' },

@@ -83,6 +83,7 @@ If both panels used the same class, the `querySelectorAll` in one panel's switch
    - **Step 1 (Installation):** `installInvoicingDate` == selected batch
    - **Step 2 (Migration):** `migInvoicingDate` == selected batch
 6. `Invoice Amount` = `Total Amount / 2` for every row
+6a. `Contractor` output column (after VF Owner) is per step: Installation rows take **INST Contractor**, Migration rows take **MIGR Contractor**. Detection skips headers containing `invoice` or `portion` (`COL_EXCLUDE`) so `INST Contractor Invoice#` / `Contractor Portion ins` are never picked. A missing column only produces a warning.
 7. ExcelJS writes the output with colour-coded column headers (blue = tracking fields, green = acceptance fields, gold = financial fields) plus a merged total amount cell at row 1
 8. Date columns (Installation Date, Migration Date, FAC Date) are written as native Excel date values with format `dd-mmm-yy` — not as strings
 
@@ -505,4 +506,4 @@ The `formatDate()` function remains in the codebase but is no longer used for Ex
 
 ## Service Worker Cache
 
-When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v24` → `lmp-invoicing-v25`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v33`.
+When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v24` → `lmp-invoicing-v25`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v34`.
