@@ -1406,6 +1406,46 @@ footer p + p {
   font-weight: 700;
   font-size: 0.95rem;
   color: #1a3a5c;
+  flex: 1;
+}
+
+/* Folder sections are <details>: click the header to open / close */
+summary.tsrval-folder-header {
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  justify-content: flex-start;
+}
+summary.tsrval-folder-header::-webkit-details-marker {
+  display: none;
+}
+summary.tsrval-folder-header::before {
+  content: '\25B6';
+  font-size: 0.7rem;
+  color: #0070C0;
+  transition: transform 0.15s;
+}
+details.tsrval-folder-section[open] > summary.tsrval-folder-header::before {
+  transform: rotate(90deg);
+}
+details.tsrval-folder-section:not([open]) > summary.tsrval-folder-header {
+  border-bottom: none;
+}
+details.tsrval-folder-section {
+  margin-bottom: 0.75rem;
+}
+
+.tsrval-folder-count {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #4a5568;
+}
+
+.tsrval-expand-bar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  margin-bottom: 0.6rem;
 }
 
 /* Folder badge (All Pass / N issues) */

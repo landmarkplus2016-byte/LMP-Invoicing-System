@@ -723,12 +723,33 @@ async function runValidation() {
     //   PDF "EX.01"             → normalizeActivityCode → "EX01"  ← same code
     const isPdfGroup = folderData.type === 'pdf';
 
-    const byCombo = new Map();
+    // Excel: pair every TSR row with its own mail row before checking anything.
+    // The same Site + Facing + item can appear several times in one mail (e.g.
+    // a hub site's TX16 for several links), each with its own Request #, so:
+    //   pass 1 — same Site + Facing + item AND Request # = Certificate #
+    //   pass 2 — same Site + Facing + item (Certificate # mismatch)
+    //   pass 3 — same Site + item, Facing differs (Facing mismatch)
+    // Each mail row is used once, so two TSR rows never share a mail line.
+    const excelPair = new Map();   // tsrRow → { row, exact }
+    const pairedBy  = new Map();   // mail row pos → tsrRow it was given to
     if (!isPdfGroup) {
-      for (const r of dataRows) {
-        const k = normalizeLower(r.siteId) + '||' + normalizeLower(r.facing) + '||' + itemMatchKey(r.item);
-        if (!byCombo.has(k)) byCombo.set(k, r);
-      }
+      const siteOf = r => normalizeLower(r.siteId);
+      const codeOf = r => itemMatchKey(r.item);
+      const passes = [
+        (t, r) => normalizeLower(r.facing) === normalizeLower(t.facing) &&
+                  normalizeLower(r.request) === normalizeLower(t.cert),
+        (t, r) => normalizeLower(r.facing) === normalizeLower(t.facing),
+        (t, r) => normalizeLower(r.request) === normalizeLower(t.cert),
+        ()     => true
+      ];
+      passes.forEach((ok, pass) => {
+        for (const t of groupRows) {
+          if (excelPair.has(t)) continue;
+          const r = dataRows.find(r => !pairedBy.has(r.pos) &&
+            siteOf(r) === normalizeLower(t.siteId) && codeOf(r) === itemMatchKey(t.itemDesc) && ok(t, r));
+          if (r) { excelPair.set(t, { row: r, exact: pass < 2 }); pairedBy.set(r.pos, t); }
+        }
+      });
     }
 
     const validatedRows = [];
@@ -777,22 +798,31 @@ async function runValidation() {
           status = 'fail';
         }
       } else {
-        const key = normalizeLower(tsrRow.siteId) + '||' + normalizeLower(tsrRow.facing) + '||' + itemMatchKey(tsrRow.itemDesc);
-        matched = byCombo.get(key) || null;
+        const pair = excelPair.get(tsrRow);
+        matched = pair && pair.exact ? pair.row : null;
       }
 
       if (!isPdfGroup) {
         if (!matched) {
-          // Excel fallback: try by Site ID + Item prefix, ignore Facing
-          const partial = dataRows.find(r =>
+          // Excel fallback: paired by Site ID + Item prefix only (Facing differs)
+          const pair    = excelPair.get(tsrRow);
+          const partial = pair ? pair.row : null;
+          // Every mail row for this Site + item already belongs to another TSR row
+          const taken = partial ? [] : dataRows.filter(r =>
             normalizeLower(r.siteId) === normalizeLower(tsrRow.siteId) &&
-            itemMatchKey(r.item)     === itemMatchKey(tsrRow.itemDesc)
-          );
+            itemMatchKey(r.item)     === itemMatchKey(tsrRow.itemDesc));
           if (partial) {
             issues.push('Facing # mismatch — TSR: "' + tsrRow.facing + '", file: "' + partial.facing + '"');
             if (normalizeLower(partial.request) !== normalizeLower(tsrRow.cert))
               issues.push('Certificate # mismatch — TSR: "' + tsrRow.cert + '", file (Request #): "' + partial.request + '"');
             matchPos = partial.pos;
+          } else if (taken.length) {
+            issues.push(
+              'Duplicate — the file has ' + taken.length + ' row' + (taken.length !== 1 ? 's' : '') +
+              ' for Site ID "' + tsrRow.siteId + '" + Item "' + itemMatchKey(tsrRow.itemDesc) +
+              '" and ' + (taken.length !== 1 ? 'they are' : 'it is') + ' already matched to TSR row ' +
+              taken.map(r => pairedBy.get(r.pos).tsrExcelRow).join(', ')
+            );
           } else {
             issues.push(
               'Row not found — no match for ' +
@@ -866,6 +896,14 @@ async function runValidation() {
 // ---------------------------------------------------------------------------
 // Render Results
 // ---------------------------------------------------------------------------
+el('tsrval-folder-results').addEventListener('click', e => {
+  const btn = e.target.closest('[data-expand]');
+  if (!btn) return;
+  const open = btn.dataset.expand === 'open';
+  el('tsrval-folder-results').querySelectorAll('details.tsrval-folder-section')
+    .forEach(d => { d.open = open; });
+});
+
 function renderResults(subNum, totalRows, folderResults, colInfo) {
   const allRows   = folderResults.flatMap(f => f.rows);
   const passCount = allRows.filter(r => r.status === 'pass').length;
@@ -910,13 +948,14 @@ function renderResults(subNum, totalRows, folderResults, colInfo) {
     const ok       = failN === 0;
 
     foldersHtml += `
-      <div class="tsrval-folder-section${ok ? ' tsrval-folder-ok' : ' tsrval-folder-fail'}${folder.isToc ? ' tsrval-folder-toc' : ''}">
-        <div class="tsrval-folder-header">
+      <details class="tsrval-folder-section${ok ? ' tsrval-folder-ok' : ' tsrval-folder-fail'}${folder.isToc ? ' tsrval-folder-toc' : ''}"${ok ? '' : ' open'}>
+        <summary class="tsrval-folder-header">
           <span class="tsrval-folder-title">&#128193; ${escHtml(title)}${typeTag}${filePart}</span>
+          <span class="tsrval-folder-count">${folder.rows.length} row${folder.rows.length !== 1 ? 's' : ''}</span>
           <span class="tsrval-folder-badge ${ok ? 'tsrval-badge-pass' : 'tsrval-badge-fail'}">
             ${ok ? '&#10003; All Pass' : failN + ' issue' + (failN > 1 ? 's' : '')}
           </span>
-        </div>`;
+        </summary>`;
 
     if (folder.globalError)
       foldersHtml += `<div class="tsrval-global-error">&#9888; ${escHtml(folder.globalError)}</div>`;
@@ -950,11 +989,17 @@ function renderResults(subNum, totalRows, folderResults, colInfo) {
               </tr>`;
     });
 
-    foldersHtml += `</tbody></table></div></div>`;
+    foldersHtml += `</tbody></table></div></details>`;
   }
 
   el('tsrval-summary').innerHTML = summaryHtml;
-  el('tsrval-folder-results').innerHTML = foldersHtml;
+  // Folders with issues start open, all-pass folders closed
+  el('tsrval-folder-results').innerHTML = (folderResults.length > 1
+    ? '<div class="tsrval-expand-bar">' +
+        '<button type="button" class="acc-link-btn" data-expand="open">Expand all</button>' +
+        '<button type="button" class="acc-link-btn" data-expand="close">Collapse all</button>' +
+      '</div>'
+    : '') + foldersHtml;
   el('tsrval-results').style.display = 'block';
   el('tsrval-results').scrollIntoView({ behavior: 'smooth' });
 }

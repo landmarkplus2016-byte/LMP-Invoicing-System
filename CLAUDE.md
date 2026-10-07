@@ -229,10 +229,12 @@ The validation path is chosen by the **attachment type actually found** (`folder
 **Phase 1 — Matching (per folder group):**
 
 **Excel attachments (regular numbered folders):**
-- Combo key: `Site ID + Facing # + itemMatchKey(Item Description)`
+- Key: `Site ID + Facing # + itemMatchKey(Item Description)`
 - `itemMatchKey()` extracts the catalogue code prefix: `"EX06 - S&I of …"` → `"EX06"`. This makes matching prefix-invariant so minor description wording/punctuation differences don't cause failures.
-- Fallback: if exact key not found, try `Site ID + itemMatchKey` (ignoring Facing #) — reports Facing mismatch but still matches the row.
+- **One-to-one pairing (`excelPair`)** — the same Site + Facing + item can appear several times in one mail (a hub site's `TX16` for several links, each with its own Request #), so every TSR row is paired with its own mail row before any check, in four passes over the group: (1) same Site + Facing + item **and** Request # = Certificate #, (2) same Site + Facing + item, (3) same Site + item with Request # = Certificate # (Facing differs), (4) same Site + item. Each mail row is used once. Passes 1–2 are a full match; passes 3–4 report a Facing mismatch.
+  - Before this, only the first mail row per key was kept, so all repeats of `H3153 / TX16` mapped to one position — giving false Certificate # mismatches and a cascade of false order errors.
 - After matching: Certificate # (TSR) is validated against Request # (Excel). This is the only additional field check — Site/Facing/Item were already used as the key.
+- A TSR row whose Site + item rows in the mail are all taken by other TSR rows fails as **Duplicate** (naming those TSR rows) instead of "Row not found".
 
 **PDF attachments (TOC folders and numbered folders holding a Completion Certificate):**
 
@@ -289,7 +291,7 @@ This ensures **both rows in every swap are flagged**, not just the second one. U
 - Grey diagnostic strip showing detected column letters
 - Summary stat boxes: Submission #, Total Rows, Passed, Failed
 - Green all-OK banner or red issues-found banner
-- Per-folder sections with colour-coded headers (green border = all pass, red = has issues)
+- Per-folder sections with colour-coded headers (green border = all pass, red = has issues). Each section is a `<details>` — click the header to open/close; folders with issues start open, all-pass folders start closed. An **Expand all / Collapse all** bar sits above the folders.
 - TOC folders show a teal **TOC** badge and teal left border
 - Per-row table: TSR Row #, Site ID, Facing #, Item Description, Certificate #, Status badge, Issues list
 - Order errors report the specific other row they're swapped with and both Excel positions
@@ -522,4 +524,4 @@ The `formatDate()` function remains in the codebase but is no longer used for Ex
 
 ## Service Worker Cache
 
-When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v24` → `lmp-invoicing-v25`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v35`.
+When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v24` → `lmp-invoicing-v25`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v36`.
