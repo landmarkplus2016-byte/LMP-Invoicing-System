@@ -586,6 +586,9 @@ el('tso-btn-run').addEventListener('click', async () => {
 el('tso-btn-export').addEventListener('click', () => {
   exportOrder().catch(err => showError('Export failed: ' + err.message));
 });
+el('tso-btn-folders').addEventListener('click', () => {
+  exportFolders().catch(err => showError('Folder download failed: ' + err.message));
+});
 
 // ---------------------------------------------------------------------------
 // Core logic
@@ -690,10 +693,14 @@ async function runOrder() {
     selected.push({ ...t, cum: total });
   }
 
-  const usedMails = [...new Set(found.map(t => t.mail))].sort((a, b) => a.rank - b.rank);
+  // ── 4. Number the mails holding selected tasks 1, 2, 3… in mail order ────
+  const folders = [...new Set(selected.map(t => t.mail))].sort((a, b) => a.rank - b.rank);
+  const folderOf = new Map(folders.map((m, i) => [m, i + 1]));
+  for (const t of selected) t.folder = folderOf.get(t.mail);
+
   return {
     sub, subLabel: scope[0].subRaw, target, scope, selected, skipped, notFound,
-    total, usedMails,
+    total, folders, folderOf,
     scopeAmount: scope.reduce((s, t) => s + t.amount, 0),
     foundAmount: found.reduce((s, t) => s + t.amount, 0)
   };
@@ -742,16 +749,26 @@ function renderResults(r) {
         fmtEGP(r.notFound.reduce((s, t) => s + t.amount, 0)), r.notFound.length ? 'acc-stat-fail' : '') +
     '</div>' + banner;
 
+  // Collapsible section: the lists run to hundreds of rows, so they start closed
+  const section = (title, count, extra, table) =>
+    '<details class="tso-details">' +
+      '<summary><span class="tso-sum-title">' + title + '</span>' +
+      '<span class="tso-sum-count">' + count + '</span>' +
+      (extra ? '<span class="tso-sum-extra">' + extra + '</span>' : '') + '</summary>' +
+      '<div class="table-wrapper">' + table + '</div>' +
+    '</details>';
+
   // Selected tasks, in mail order
   el('tso-selected-wrap').innerHTML = r.selected.length
-    ? '<h3 class="tso-h3">Selected tasks — in mail order</h3>' +
-      '<div class="table-wrapper"><table class="acc-table"><thead><tr>' +
-        '<th>#</th><th>Site ID</th><th>Line Item</th><th>Acc. Week</th><th>Mail (row)</th>' +
+    ? section('Selected tasks — in mail order', r.selected.length, fmtEGP(r.total),
+      '<table class="acc-table"><thead><tr>' +
+        '<th>#</th><th>Folder</th><th>Site ID</th><th>Line Item</th><th>Acc. Week</th><th>Mail (row)</th>' +
         '<th>Tracking Row</th><th>Amount</th><th>Running Total</th>' +
       '</tr></thead><tbody>' +
       r.selected.map((t, i) =>
         '<tr class="acc-row-pass">' +
           '<td>' + (i + 1) + '</td>' +
+          '<td class="tso-folder-col">' + t.folder + '</td>' +
           '<td class="acc-site">' + escHtml(t.siteRaw) + '</td>' +
           '<td class="acc-item-col">' + escHtml(t.item) + '</td>' +
           '<td>' + escHtml(t.weekRaw) + '</td>' +
@@ -761,14 +778,14 @@ function renderResults(r) {
           '<td class="num">' + fmtEGP(t.amount) + '</td>' +
           '<td class="num">' + fmtEGP(t.cum) + '</td>' +
         '</tr>').join('') +
-      '</tbody></table></div>'
+      '</tbody></table>')
     : '';
 
   // Tasks left out, with the reason
   const left = r.skipped.concat(r.notFound);
   el('tso-skipped-wrap').innerHTML = left.length
-    ? '<h3 class="tso-h3">Not included (' + left.length + ')</h3>' +
-      '<div class="table-wrapper"><table class="acc-table"><thead><tr>' +
+    ? section('Not included', left.length, fmtEGP(left.reduce((s, t) => s + t.amount, 0)),
+      '<table class="acc-table"><thead><tr>' +
         '<th>Tracking Row</th><th>Site ID</th><th>Line Item</th><th>Acc. Week</th>' +
         '<th>Amount</th><th>Reason</th>' +
       '</tr></thead><tbody>' +
@@ -781,20 +798,23 @@ function renderResults(r) {
           '<td class="num">' + fmtEGP(t.amount) + '</td>' +
           '<td class="acc-notes-col"><span class="acc-note">' + escHtml(t.reason) + '</span></td>' +
         '</tr>').join('') +
-      '</tbody></table></div>'
+      '</tbody></table>')
     : '';
 
   // Mails that were opened, so a wrong pick or an unreadable sheet is visible
-  const opened = _mails.filter(m => _mailCache.has(m.path));
+  const opened = _mails.filter(m => _mailCache.has(m.path))
+    .sort((a, b) => (r.folderOf.get(a) ?? Infinity) - (r.folderOf.get(b) ?? Infinity) || a.rank - b.rank);
   el('tso-mails-wrap').innerHTML = opened.length || _ignored.length
-    ? '<h3 class="tso-h3">Mails used</h3>' +
-      '<div class="table-wrapper"><table class="acc-table"><thead><tr>' +
-        '<th>Area</th><th>Weeks</th><th>Mail</th><th>Attachment / Sheet</th><th>Tasks taken</th>' +
+    ? section('Mails used', r.folders.length + ' folder' + (r.folders.length !== 1 ? 's' : ''),
+        opened.length + ' mail' + (opened.length !== 1 ? 's' : '') + ' opened',
+      '<table class="acc-table"><thead><tr>' +
+        '<th>Folder</th><th>Area</th><th>Weeks</th><th>Mail</th><th>Attachment / Sheet</th><th>Tasks taken</th>' +
       '</tr></thead><tbody>' +
       opened.map(m => {
         const p = _mailCache.get(m.path);
         const n = r.selected.filter(t => t.mail === m).length;
         return '<tr class="' + (p.error ? 'acc-row-fail' : '') + '">' +
+          '<td class="tso-folder-col">' + (r.folderOf.get(m) ?? '—') + '</td>' +
           '<td>' + AREA_LABEL[m.area] + '</td>' +
           '<td>' + m.weeks.join(', ') + (m.year ? ' / ' + m.year : '') + '</td>' +
           '<td class="acc-item-col">' + escHtml(m.path) + '</td>' +
@@ -805,12 +825,13 @@ function renderResults(r) {
         '</tr>';
       }).join('') +
       _ignored.map(f =>
-        '<tr><td colspan="2" class="acc-sub">Ignored</td><td class="acc-item-col">' + escHtml(f.path) +
+        '<tr><td colspan="3" class="acc-sub">Ignored</td><td class="acc-item-col">' + escHtml(f.path) +
         '</td><td colspan="2" class="acc-sub">' + escHtml(f.reason) + '</td></tr>').join('') +
-      '</tbody></table></div>'
+      '</tbody></table>')
     : '';
 
   el('tso-btn-export').disabled = !r.selected.length;
+  el('tso-btn-folders').disabled = !r.folders.length;
   el('tso-export-status').textContent = '';
 }
 
@@ -860,26 +881,65 @@ async function exportOrder() {
 
   const wb = new ExcelJS.Workbook();
   wb.creator = 'LMP Invoicing System';
-  addSheet(wb, 'Submission', r.selected, []);
+  addSheet(wb, 'Submission', r.selected, [['Folder', 'folder', 10]]);
   const left = r.skipped.concat(r.notFound);
   if (left.length) {
     addSheet(wb, 'Not Included', left, [['Acceptance Week', 'weekRaw', 20], ['Reason', 'reason', 60]]);
   }
 
-  const today    = new Date().toISOString().slice(0, 10);
-  const safeSub  = r.subLabel.replace(/[\\/:*?"<>|#]+/g, '').trim().replace(/\s+/g, '_') || 'Sub';
-  const filename = 'TSR_Sub_' + safeSub + '_Order_' + today + '.xlsx';
-  const buf  = await wb.xlsx.writeBuffer();
-  const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-  const url  = URL.createObjectURL(blob);
-  const a    = Object.assign(document.createElement('a'), { href: url, download: filename });
+  const filename = fileBase(r) + '_Order_' + new Date().toISOString().slice(0, 10) + '.xlsx';
+  downloadBlob(new Blob([await wb.xlsx.writeBuffer()],
+    { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), filename);
+
+  el('tso-export-status').textContent = '✅ Downloaded ' + filename + ' — ' +
+    r.selected.length + ' task' + (r.selected.length !== 1 ? 's' : '') + ', ' + fmtEGP(r.total) + '.';
+}
+
+// Mail folders: every mail holding a selected task goes into its numbered
+// folder (1, 2, 3… — the Folder column of the export), zipped for download.
+async function exportFolders() {
+  const r = _result;
+  if (!r || !r.folders.length) return;
+  const JSZip = await getJsZip();
+  if (!JSZip) throw new Error('ZIP library could not be loaded. Check your internet connection.');
+
+  el('tso-export-status').textContent = 'Preparing ' + r.folders.length + ' folders…';
+  const zip = new JSZip();
+  r.folders.forEach((m, i) => zip.folder(String(i + 1)).file(m.file.name, m.file));
+  const blob = await zip.generateAsync({ type: 'blob' });
+
+  const filename = fileBase(r) + '_Mails_' + new Date().toISOString().slice(0, 10) + '.zip';
+  downloadBlob(blob, filename);
+  el('tso-export-status').textContent = '✅ Downloaded ' + filename + ' — folders 1–' +
+    r.folders.length + ', one mail each.';
+}
+
+let _JSZip = null;
+async function getJsZip() {
+  if (_JSZip) return _JSZip;
+  try {
+    await new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+      s.onload = res; s.onerror = rej;
+      document.head.appendChild(s);
+    });
+    _JSZip = window.JSZip || null;
+    return _JSZip;
+  } catch { return null; }
+}
+
+function fileBase(r) {
+  return 'TSR_Sub_' + (r.subLabel.replace(/[\/:*?"<>|#]+/g, '').trim().replace(/\s+/g, '_') || 'Sub');
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a   = Object.assign(document.createElement('a'), { href: url, download: filename });
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
-
-  el('tso-export-status').textContent = '✅ Downloaded ' + filename + ' — ' +
-    r.selected.length + ' task' + (r.selected.length !== 1 ? 's' : '') + ', ' + fmtEGP(r.total) + '.';
 }
 
 })(); // end IIFE

@@ -373,7 +373,11 @@
           <section id="tso-results" class="card" style="display:none">
             <div class="tso-results-head">
               <h2>Submission Order</h2>
-              <button id="tso-btn-export" class="btn btn-success" disabled>&#8659; Export to Excel</button>
+              <div class="tso-actions">
+                <button id="tso-btn-export" class="btn btn-success" disabled>&#8659; Export to Excel</button>
+                <button id="tso-btn-folders" class="btn btn-success" disabled
+                        title="Downloads a ZIP with the used mails in numbered folders 1, 2, 3…">&#128193; Download Mail Folders</button>
+              </div>
             </div>
             <p id="tso-export-status" class="con-export-status"></p>
             <div id="tso-col-info" class="acc-col-info"></div>

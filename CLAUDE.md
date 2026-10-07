@@ -308,7 +308,13 @@ Builds a TSR submission from one **TSR Sub#** in the order the tasks appear in t
 
 **Selection:** walk tasks in that order. Skip a task whose line item is not in the TSR or whose actual qty (`Absolute Qty × distance factor`) exceeds the TSR remaining left. Amount = `New Total`. A task that would overshoot the target is taken only if that lands closer than stopping before it; otherwise it is skipped and smaller tasks further down are still tried. Stop once the target is reached.
 
-**Export** (`TSR_Sub_<n>_Order_<date>.xlsx`): sheet `Submission` — ID#, VF Task Owner, Vendor, Logical Site ID, Site Option, Facing, Task Date, Line Item, Absolute Quantity, PRQ, Certificate #, Acceptance Status, in mail order; sheet `Not Included` — the same columns + Acceptance Week + Reason.
+**Mail folders:** every mail holding at least one selected task gets a folder number 1, 2, 3… in mail order (`result.folders` / `folderOf`, `task.folder`).
+
+**Results UI:** the Selected / Not included / Mails used lists are collapsible `<details class="tso-details">` sections, closed by default, with the count and amount in the summary line.
+
+**Export** (`TSR_Sub_<n>_Order_<date>.xlsx`): sheet `Submission` — ID#, VF Task Owner, Vendor, Logical Site ID, Site Option, Facing, Task Date, Line Item, Absolute Quantity, PRQ, Certificate #, Acceptance Status, **Folder**, in mail order; sheet `Not Included` — the same 12 columns + Acceptance Week + Reason.
+
+**Download Mail Folders** (`TSR_Sub_<n>_Mails_<date>.zip`): the original mail files placed in folders `1/`, `2/`, `3/`… matching the Folder column. Uses **JSZip** (cdnjs 3.10.1), loaded on demand by script injection like PDF.js — a browser cannot save loose folders, so they are zipped.
 
 ## Contractor App Data Flow (`contractor-app.js`)
 

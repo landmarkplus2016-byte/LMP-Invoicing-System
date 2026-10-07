@@ -1830,10 +1830,75 @@ footer p + p {
   flex-wrap: wrap;
 }
 
-.tso-h3 {
-  margin: 1.25rem 0 0.5rem;
-  font-size: 1rem;
+.tso-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+/* Collapsible result lists */
+.tso-details {
+  margin-top: 1rem;
+  border: 1px solid #c8d6e8;
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.tso-details > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.7rem 1rem;
+  background: #f0f5fb;
   color: #1a3a5c;
+  font-weight: 700;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.tso-details > summary::-webkit-details-marker {
+  display: none;
+}
+.tso-details > summary::before {
+  content: '\25B6';
+  font-size: 0.7rem;
+  color: #0070C0;
+  transition: transform 0.15s;
+}
+.tso-details[open] > summary::before {
+  transform: rotate(90deg);
+}
+.tso-details > summary:hover {
+  background: #e3edf8;
+}
+.tso-details[open] > summary {
+  border-bottom: 1px solid #c8d6e8;
+}
+.tso-details > .table-wrapper {
+  margin: 0;
+}
+
+.tso-sum-count {
+  padding: 0.1rem 0.6rem;
+  border-radius: 999px;
+  background: #0070C0;
+  color: #fff;
+  font-size: 0.8rem;
+}
+
+.tso-sum-extra {
+  margin-left: auto;
+  font-weight: 600;
+  font-size: 0.88rem;
+  color: #4a5568;
+}
+
+.tso-folder-col {
+  text-align: center;
+  font-weight: 700;
+  color: #0070C0;
 }
 
 @media (max-width: 768px) {
