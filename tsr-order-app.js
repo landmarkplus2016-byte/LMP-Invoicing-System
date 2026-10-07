@@ -432,6 +432,7 @@ function readMailWorkbook(wb) {
           site, item, key: itemKey(item),
           facing: cFacing >= 0 ? siteKey(r[cFacing]) : '',
           facingRaw: cFacing >= 0 ? r[cFacing] : null,
+          hasFacingCol: cFacing >= 0,
           request:   cReq >= 0 ? r[cReq] : null
         });
       }
@@ -651,7 +652,14 @@ function applyMailFixes(t, mr) {
     }
   }
 
-  if (!isBlank(mr.facingRaw)) {
+  // Mail Facing is blank (or NA) → the task has no facing: clear the tracking value
+  if (mr.hasFacingCol && isBlank(mr.facingRaw)) {
+    const trk = values.facing;
+    if (str(trk) !== '') {
+      values.facing = '';
+      fixes.push({ field: 'facing', text: 'Facing ' + str(trk) + ' removed (blank in mail)' });
+    }
+  } else if (!isBlank(mr.facingRaw)) {
     const trk = values.facing;
     if (siteKey(isBlank(trk) ? '' : trk) !== mr.facing) {
       values.facing = mr.facingRaw;
