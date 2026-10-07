@@ -201,7 +201,7 @@ function setLoadingText(txt) {
 function checkReady() {
   const amount = parseAmount(el('tso-amount').value);
   el('tso-btn-run').disabled = !(_trk && _tsr && _mails.length
-    && el('tso-sub').value !== '' && !Number.isNaN(amount));
+    && selectedSub() !== '' && !Number.isNaN(amount));
 }
 
 // ---------------------------------------------------------------------------
@@ -419,6 +419,7 @@ function readMailWorkbook(wb) {
       ]);
       if (cSite < 0 || cItem < 0) continue;
       const cFacing = findCol(h, [t => t.includes('facing')]);
+      const cReq    = findCol(h, [t => t.includes('request')]);
 
       const out = [];
       for (let j = i + 1; j < rows.length; j++) {
@@ -429,12 +430,14 @@ function readMailWorkbook(wb) {
         out.push({
           pos: out.length, excelRow: j + r0 + 1,
           site, item, key: itemKey(item),
-          facing: cFacing >= 0 ? siteKey(r[cFacing]) : ''
+          facing: cFacing >= 0 ? siteKey(r[cFacing]) : '',
+          facingRaw: cFacing >= 0 ? r[cFacing] : null,
+          request:   cReq >= 0 ? r[cReq] : null
         });
       }
       if (!best || out.length > best.rows.length) {
         best = { sheet: name, headerRow: i + r0 + 1,
-                 col: { site: cSite, item: cItem, facing: cFacing }, rows: out };
+                 col: { site: cSite, item: cItem, facing: cFacing, req: cReq }, rows: out };
       }
       break;
     }
@@ -534,29 +537,59 @@ function loadFolderFiles(files) {
   checkReady();
 }
 
-// TSR Sub# filter: every distinct value in the tracking column, with task counts
+// TSR Sub# box: type or pick. The suggestion list holds every distinct value in
+// the tracking column with its task count; the typed text must match one exactly.
+let _subs = new Map(); // key → { label, count }
+
 function populateSubs() {
-  const sel  = el('tso-sub');
-  const prev = sel.value;
-  const map  = new Map(); // key → { label, count }
+  _subs = new Map();
   for (const t of _trk.tasks) {
     if (!t.sub) continue;
-    if (!map.has(t.sub)) map.set(t.sub, { label: t.subRaw, count: 0 });
-    map.get(t.sub).count++;
+    if (!_subs.has(t.sub)) _subs.set(t.sub, { label: t.subRaw, count: 0 });
+    _subs.get(t.sub).count++;
   }
-  const keys = [...map.keys()].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-  sel.innerHTML = '<option value="">' + (keys.length ? '-- Select TSR Sub# --' : 'No values in TSR Sub# column') +
-    '</option>' + keys.map(k =>
-      '<option value="' + escHtml(k) + '">' + escHtml(map.get(k).label) +
-      ' (' + map.get(k).count + ' task' + (map.get(k).count !== 1 ? 's' : '') + ')</option>').join('');
-  if (map.has(prev)) sel.value = prev;
+  const keys = [..._subs.keys()].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  el('tso-sub-list').innerHTML = keys.map(k => {
+    const s = _subs.get(k);
+    return '<option value="' + escHtml(s.label) + '">' + s.count + ' task' + (s.count !== 1 ? 's' : '') + '</option>';
+  }).join('');
+  el('tso-sub').placeholder = keys.length ? 'Type or pick, e.g. ' + _subs.get(keys[keys.length - 1]).label
+                                          : 'No values in TSR Sub# column';
+  updateSubHint();
 }
 
-el('tso-sub').addEventListener('change', checkReady);
+// Key of the typed TSR Sub#, or '' when it matches no value in the tracking file
+function selectedSub() {
+  const k = subKey(el('tso-sub').value);
+  return _subs.has(k) ? k : '';
+}
+
+function updateSubHint() {
+  const hint = el('tso-sub-hint');
+  const typed = str(el('tso-sub').value);
+  const k = selectedSub();
+  if (k) {
+    const n = _subs.get(k).count;
+    hint.textContent = 'TSR Sub# ' + _subs.get(k).label + ': ' + n + ' task' + (n !== 1 ? 's' : '') + '.';
+  } else if (typed && _trk) {
+    const partial = [..._subs.values()].filter(s => s.label.toLowerCase().includes(typed.toLowerCase())).length;
+    hint.textContent = partial
+      ? partial + ' TSR Sub# value' + (partial !== 1 ? 's' : '') + ' contain "' + typed + '" — pick one from the list.'
+      : 'No TSR Sub# "' + typed + '" in the tracking file.';
+  } else {
+    hint.textContent = '';
+  }
+  hint.classList.toggle('tso-amount-bad', !!typed && !k);
+}
+
+el('tso-sub').addEventListener('input', () => { updateSubHint(); checkReady(); });
+el('tso-sub').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !el('tso-btn-run').disabled) el('tso-btn-run').click();
+});
 el('tso-amount').addEventListener('input', () => {
   const v    = parseAmount(el('tso-amount').value);
   const hint = el('tso-amount-hint');
-  if (v === null)          hint.textContent = 'Blank = take every task found in the mails.';
+  if (v === null)          hint.textContent = 'Blank amount = take every task found in the mails.';
   else if (Number.isNaN(v)) hint.textContent = 'Not a valid amount — use e.g. 500000, 500,000, 500K or 1.5M.';
   else                     hint.textContent = '= ' + fmtEGP(v);
   hint.classList.toggle('tso-amount-bad', Number.isNaN(v));
@@ -593,6 +626,43 @@ el('tso-btn-folders').addEventListener('click', () => {
 // ---------------------------------------------------------------------------
 // Core logic
 // ---------------------------------------------------------------------------
+// Placeholder text that means "no value": "", "NA", "N/A", "-"
+function isBlank(v) {
+  return /^(|n\/?a|-+)$/i.test(str(v));
+}
+
+// Same rules as TSR Sub Validation (Excel attachments): the mail row is the
+// reference. Facing # must agree with the mail, and Certificate # must equal
+// the mail's Request #. A blank or different tracking value is replaced by the
+// mail value; every change is recorded so it can be highlighted.
+// Returns { values, fixes } — values is a corrected copy of the tracking cells.
+function applyMailFixes(t, mr) {
+  const values = { ...t.values };
+  const fixes  = [];
+
+  if (!isBlank(mr.request)) {
+    const trk = values.cert;
+    const same = str(trk).replace(/\.0+$/, '').toLowerCase() === str(mr.request).replace(/\.0+$/, '').toLowerCase();
+    if (!same) {
+      values.cert = mr.request;
+      fixes.push({ field: 'cert', text: isBlank(trk)
+        ? 'Certificate # filled from mail: ' + str(mr.request)
+        : 'Certificate # ' + str(trk) + ' → ' + str(mr.request) + ' (mail Request #)' });
+    }
+  }
+
+  if (!isBlank(mr.facingRaw)) {
+    const trk = values.facing;
+    if (siteKey(isBlank(trk) ? '' : trk) !== mr.facing) {
+      values.facing = mr.facingRaw;
+      fixes.push({ field: 'facing', text: isBlank(trk)
+        ? 'Facing filled from mail: ' + str(mr.facingRaw)
+        : 'Facing ' + str(trk) + ' → ' + str(mr.facingRaw) + ' (mail)' });
+    }
+  }
+  return { values, fixes };
+}
+
 // Mails that can hold a tracking week segment, best candidate first:
 // same area, same year (when both are known), sharing a week number.
 // A mail covering exactly the same weeks beats a partial overlap; ties go to
@@ -608,7 +678,7 @@ function mailsFor(seg) {
 }
 
 async function runOrder() {
-  const sub    = el('tso-sub').value;
+  const sub    = selectedSub();
   const target = parseAmount(el('tso-amount').value);
   const scope  = _trk.tasks.filter(t => t.sub === sub);
   if (!scope.length) throw new Error('No tasks found for this TSR Sub#.');
@@ -648,7 +718,7 @@ async function runOrder() {
 
     if (hit) {
       used.add(hit.mail.path + '|' + hit.row.pos);
-      found.push({ ...t, mail: hit.mail, mailRow: hit.row });
+      found.push({ ...t, ...applyMailFixes(t, hit.row), mail: hit.mail, mailRow: hit.row });
     } else {
       const names = cands.map(m => '"' + m.name + '"').join(', ');
       let reason;
@@ -709,6 +779,17 @@ async function runOrder() {
 // ---------------------------------------------------------------------------
 // Render
 // ---------------------------------------------------------------------------
+// One line telling how many selected tasks were corrected from their mail
+function fixBanner(r) {
+  const fixed = r.selected.filter(t => t.fixes.length);
+  if (!fixed.length) return '';
+  const n = f => r.selected.filter(t => t.fixes.some(x => x.field === f)).length;
+  return '<div class="acc-banner tso-banner-fix">' + fixed.length + ' selected task' +
+    (fixed.length !== 1 ? 's were' : ' was') + ' corrected from the mail — ' +
+    n('cert') + ' Certificate #, ' + n('facing') + ' Facing. ' +
+    'The corrected cells are highlighted yellow in the export.</div>';
+}
+
 function renderResults(r) {
   const c = _trk.col;
   el('tso-col-info').textContent = [
@@ -747,7 +828,7 @@ function renderResults(r) {
       stat('Selected', r.selected.length, fmtEGP(r.total), 'acc-stat-pass') +
       stat('Not found in mails', r.notFound.length,
         fmtEGP(r.notFound.reduce((s, t) => s + t.amount, 0)), r.notFound.length ? 'acc-stat-fail' : '') +
-    '</div>' + banner;
+    '</div>' + banner + fixBanner(r);
 
   // Collapsible section: the lists run to hundreds of rows, so they start closed
   const section = (title, count, extra, table) =>
@@ -763,7 +844,7 @@ function renderResults(r) {
     ? section('Selected tasks — in mail order', r.selected.length, fmtEGP(r.total),
       '<table class="acc-table"><thead><tr>' +
         '<th>#</th><th>Folder</th><th>Site ID</th><th>Line Item</th><th>Acc. Week</th><th>Mail (row)</th>' +
-        '<th>Tracking Row</th><th>Amount</th><th>Running Total</th>' +
+        '<th>Tracking Row</th><th>Amount</th><th>Running Total</th><th>Corrected from mail</th>' +
       '</tr></thead><tbody>' +
       r.selected.map((t, i) =>
         '<tr class="acc-row-pass">' +
@@ -777,6 +858,7 @@ function renderResults(r) {
           '<td>' + t.excelRow + '</td>' +
           '<td class="num">' + fmtEGP(t.amount) + '</td>' +
           '<td class="num">' + fmtEGP(t.cum) + '</td>' +
+          '<td class="acc-notes-col">' + t.fixes.map(f => '<div class="acc-note">' + escHtml(f.text) + '</div>').join('') + '</td>' +
         '</tr>').join('') +
       '</tbody></table>')
     : '';
@@ -862,10 +944,15 @@ async function exportOrder() {
 
     for (const t of tasks) {
       const row = ws.addRow(cols.map(([, key]) => {
+        if (key === 'fixText') return (t.fixes || []).map(f => f.text).join('; ');
         const v = key in t.values ? t.values[key] : t[key];
         return v == null ? '' : v;
       }));
-      row.eachCell({ includeEmpty: true }, c => {
+      const fixed = new Set((t.fixes || []).map(f => f.field));
+      row.eachCell({ includeEmpty: true }, (c, n) => {
+        if (fixed.has(cols[n - 1][1])) {
+          c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } };
+        }
         let v = c.value;
         if (v instanceof Date) {
           // SheetJS dates are local midnight; shift so UTC midnight = local date
@@ -881,7 +968,7 @@ async function exportOrder() {
 
   const wb = new ExcelJS.Workbook();
   wb.creator = 'LMP Invoicing System';
-  addSheet(wb, 'Submission', r.selected, [['Folder', 'folder', 10]]);
+  addSheet(wb, 'Submission', r.selected, [['Folder', 'folder', 10], ['Corrected from Mail', 'fixText', 50]]);
   const left = r.skipped.concat(r.notFound);
   if (left.length) {
     addSheet(wb, 'Not Included', left, [['Acceptance Week', 'weekRaw', 20], ['Reason', 'reason', 60]]);

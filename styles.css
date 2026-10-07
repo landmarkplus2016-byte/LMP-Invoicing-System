@@ -1813,11 +1813,14 @@ footer p + p {
 }
 
 .tso-amount-hint {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.5rem;
   margin-top: 0.4rem;
   font-size: 0.8rem;
   color: #4a5568;
 }
-.tso-amount-hint.tso-amount-bad {
+.tso-amount-hint .tso-amount-bad {
   color: #c53030;
   font-weight: 600;
 }
@@ -1908,4 +1911,10 @@ footer p + p {
   .tso-input-amount {
     width: 100%;
   }
+}
+
+.tso-banner-fix {
+  background: #fffbea;
+  border: 1px solid #f6e05e;
+  color: #744210;
 }

@@ -342,9 +342,9 @@
             <div class="acc-controls">
               <div class="acc-control">
                 <label for="tso-sub">TSR Sub#</label>
-                <select id="tso-sub" class="acc-input acc-input-area">
-                  <option value="">-- Load tracking file --</option>
-                </select>
+                <input type="text" id="tso-sub" class="acc-input acc-input-area" list="tso-sub-list"
+                       placeholder="Load tracking file first" />
+                <datalist id="tso-sub-list"></datalist>
               </div>
               <div class="acc-control">
                 <label for="tso-amount">Target Amount (EGP)</label>
@@ -352,7 +352,10 @@
               </div>
               <button id="tso-btn-run" class="btn-primary" disabled>&#128233;&nbsp; Build Submission</button>
             </div>
-            <p id="tso-amount-hint" class="tso-amount-hint">Blank = take every task found in the mails.</p>
+            <p class="tso-amount-hint">
+              <span id="tso-sub-hint"></span>
+              <span id="tso-amount-hint">Blank amount = take every task found in the mails.</span>
+            </p>
 
             <p class="card-hint" style="margin-top:0.75rem;">
               The mails folder should hold <em>Upper-Cairo</em>, <em>Alex</em> and <em>Delta</em> folders.

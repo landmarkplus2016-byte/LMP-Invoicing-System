@@ -298,11 +298,13 @@ This ensures **both rows in every swap are flagged**, not just the second one. U
 
 Builds a TSR submission from one **TSR Sub#** in the order the tasks appear in the weekly acceptance mails. All element IDs use the `tso-*` prefix.
 
-**Inputs:** Tracking file (sheet `Invoicing Track`, header row found by scanning for "Logical Site" + "Acceptance Week"), TSR file (sheet `Request Form - VF`, same Item Description / Remaining detection as TSR Sub Prep), a **mails folder**, the **TSR Sub#** (`<select>` listing every distinct value in the tracking column whose header contains `tsr` + `sub`) and a **Target Amount** (`500000`, `500,000`, `500K`, `1.5M`; blank = no limit).
+**Inputs:** Tracking file (sheet `Invoicing Track`, header row found by scanning for "Logical Site" + "Acceptance Week"), TSR file (sheet `Request Form - VF`, same Item Description / Remaining detection as TSR Sub Prep), a **mails folder**, the **TSR Sub#** (type-or-pick combobox — `<input list>` + `<datalist id="tso-sub-list">` of every distinct value in the tracking column whose header contains `tsr` + `sub`, with task counts; the typed text must match a value exactly, case/space-insensitive via `subKey()`, before Build Submission is enabled; `#tso-sub-hint` shows the task count or how many values contain the text) and a **Target Amount** (`500000`, `500,000`, `500K`, `1.5M`; blank = no limit).
 
 **Mails folder:** one parent folder with `Upper-Cairo`, `Alex` and `Delta` sub-folders. Area comes from the deepest folder name (`alex` → A, `delta` → D, `upper`/`cairo`/`giza` → U), else from the mail name. Weeks = every number after a `W` in the mail name (`… Status W34-2026` → 34; `… 26W03-W04` → 3, 4); year from `20xx` or the 2 digits before `W`. `.msg`, `.eml` and direct Excel files are accepted; the first Excel attachment is read. In it, the sheet with a Site ID + Line Item header (`Site_ID` / `Item_Description` and variants, first 60 rows) is used — the one with the most rows if several.
 
 **Matching:** tracking rows with the selected Sub# (Cancelled skipped). Each Acceptance Week segment (`D-W38-W39-2026`) is mapped to mails of the same area + year that share a week number — an exact week set first, then the most recently saved file. The task is matched by Site ID (`siteKey`) + catalogue code (`itemKey`), count-aware (each mail row used once, same facing preferred).
+
+**Corrections from the mail (`applyMailFixes`)** — the TSR Sub Validation Excel rules applied up front, with the mail row as the reference: the mail's **Request #** column must equal **Certificate #**, and its **Facing** must equal the tracking Facing. A blank or different tracking value is replaced by the mail value (`NA`, `N/A`, `-` count as blank on both sides; a blank mail value never overwrites). Each change is recorded in `task.fixes` (`{ field, text }`): shown in a "Corrected from mail" column on screen, a yellow banner with counts, yellow-filled cells in the export and a **Corrected from Mail** column at the end of the `Submission` sheet. Site ID and Line Item need no correction — they are the match key.
 
 **Order:** mails oldest week first (then Alex, Delta, Upper-Cairo), then row order inside the mail.
 
@@ -312,7 +314,7 @@ Builds a TSR submission from one **TSR Sub#** in the order the tasks appear in t
 
 **Results UI:** the Selected / Not included / Mails used lists are collapsible `<details class="tso-details">` sections, closed by default, with the count and amount in the summary line.
 
-**Export** (`TSR_Sub_<n>_Order_<date>.xlsx`): sheet `Submission` — ID#, VF Task Owner, Vendor, Logical Site ID, Site Option, Facing, Task Date, Line Item, Absolute Quantity, PRQ, Certificate #, Acceptance Status, **Folder**, in mail order; sheet `Not Included` — the same 12 columns + Acceptance Week + Reason.
+**Export** (`TSR_Sub_<n>_Order_<date>.xlsx`): sheet `Submission` — ID#, VF Task Owner, Vendor, Logical Site ID, Site Option, Facing, Task Date, Line Item, Absolute Quantity, PRQ, Certificate #, Acceptance Status, **Folder**, **Corrected from Mail**, in mail order; sheet `Not Included` — the same 12 columns + Acceptance Week + Reason.
 
 **Download Mail Folders** (`TSR_Sub_<n>_Mails_<date>.zip`): the original mail files placed in folders `1/`, `2/`, `3/`… matching the Folder column. Uses **JSZip** (cdnjs 3.10.1), loaded on demand by script injection like PDF.js — a browser cannot save loose folders, so they are zipped.
 
