@@ -50,6 +50,10 @@
           <span class="nav-icon">&#10003;</span>
           <span class="nav-label">TSR Sub Validation</span>
         </button>
+        <button class="nav-item" role="tab" aria-selected="false" data-tab="tsrorder">
+          <span class="nav-icon">&#128233;</span>
+          <span class="nav-label">TSR Sub Order</span>
+        </button>
         <button class="nav-item" role="tab" aria-selected="false" data-tab="contractor">
           <span class="nav-icon">&#128209;</span>
           <span class="nav-label">Contractor Invoices</span>
@@ -287,6 +291,96 @@
             <h2>Validation Results</h2>
             <div id="tsrval-summary"></div>
             <div id="tsrval-folder-results"></div>
+          </section>
+
+        </main>
+      </div>
+
+      <!-- ================================================================
+           TAB: TSR Sub Order
+           ================================================================ -->
+      <div id="panel-tsrorder" class="tab-panel" style="display:none">
+        <main class="tsr-main">
+
+          <div id="tso-error" role="alert" class="con-error-msg" style="display:none"></div>
+
+          <!-- Upload + Sub# / Amount -->
+          <section class="card">
+            <h2>Upload Files &amp; Select Submission</h2>
+
+            <div class="file-cards tso-file-cards">
+
+              <div id="tso-card-track" class="file-card">
+                <div class="file-icon">&#128193;</div>
+                <div class="file-label">Task Tracking File (.xlsm)</div>
+                <button id="tso-btn-track" class="btn-secondary">Browse File</button>
+                <input type="file" id="tso-input-track" accept=".xlsm,.xlsx" style="display:none" />
+                <span id="tso-track-filename" class="filename-display">No file selected</span>
+                <div class="file-progress" id="tso-track-progress"></div>
+              </div>
+
+              <div id="tso-card-tsr" class="file-card">
+                <div class="file-icon">&#128203;</div>
+                <div class="file-label">TSR File (.xlsb)</div>
+                <button id="tso-btn-tsr" class="btn-secondary">Browse File</button>
+                <input type="file" id="tso-input-tsr" accept=".xlsb,.xlsx" style="display:none" />
+                <span id="tso-tsr-filename" class="filename-display">No file selected</span>
+                <div class="file-progress" id="tso-tsr-progress"></div>
+              </div>
+
+              <div id="tso-card-folder" class="file-card">
+                <div class="file-icon">&#128233;</div>
+                <div class="file-label">Acceptance Mails Folder</div>
+                <button id="tso-btn-folder" class="btn-secondary">Browse Folder</button>
+                <input type="file" id="tso-input-folder" webkitdirectory style="display:none" />
+                <span id="tso-folder-filename" class="filename-display">No folder selected</span>
+                <div class="file-progress" id="tso-folder-progress"></div>
+              </div>
+
+            </div>
+
+            <div class="acc-controls">
+              <div class="acc-control">
+                <label for="tso-sub">TSR Sub#</label>
+                <select id="tso-sub" class="acc-input acc-input-area">
+                  <option value="">-- Load tracking file --</option>
+                </select>
+              </div>
+              <div class="acc-control">
+                <label for="tso-amount">Target Amount (EGP)</label>
+                <input type="text" id="tso-amount" class="acc-input tso-input-amount" placeholder="e.g. 500K or 500,000" />
+              </div>
+              <button id="tso-btn-run" class="btn-primary" disabled>&#128233;&nbsp; Build Submission</button>
+            </div>
+            <p id="tso-amount-hint" class="tso-amount-hint">Blank = take every task found in the mails.</p>
+
+            <p class="card-hint" style="margin-top:0.75rem;">
+              The mails folder should hold <em>Upper-Cairo</em>, <em>Alex</em> and <em>Delta</em> folders.
+              Each task's Acceptance Week picks the mail: <code>U-W20-2026</code> &rarr; Upper-Cairo mail W20,
+              <code>A-W29-2026</code> &rarr; Alex mail W29, <code>D-W38-W39-2026</code> &rarr; Delta mail W38-W39.
+              Tasks are listed in the order they appear in the mail's Excel attachment, each line item is
+              capped by the TSR remaining quantity, and tasks are taken in that order until the target amount is reached.
+            </p>
+          </section>
+
+          <!-- Loading -->
+          <div id="tso-loading" class="con-loading-wrap" style="display:none">
+            <div class="spinner"></div>
+            <p>Reading mails&hellip;</p>
+          </div>
+
+          <!-- Results -->
+          <section id="tso-results" class="card" style="display:none">
+            <div class="tso-results-head">
+              <h2>Submission Order</h2>
+              <button id="tso-btn-export" class="btn btn-success" disabled>&#8659; Export to Excel</button>
+            </div>
+            <p id="tso-export-status" class="con-export-status"></p>
+            <div id="tso-col-info" class="acc-col-info"></div>
+            <div id="tso-summary"></div>
+            <div id="tso-selected-wrap"></div>
+            <div id="tso-skipped-wrap"></div>
+            <div id="tso-mails-wrap"></div>
           </section>
 
         </main>
@@ -874,6 +968,7 @@
   <script src="poc-app.js"></script>
   <script src="tsr-app.js"></script>
   <script src="tsr-validation-app.js"></script>
+  <script src="tsr-order-app.js"></script>
   <script src="contractor-app.js"></script>
   <script src="finance-app.js"></script>
   <script src="acceptance-check-app.js"></script>
@@ -889,6 +984,7 @@
         poc:        'POC Invoice Prep',
         tsr:        'TSR Sub Prep',
         tsrval:     'TSR Sub Validation',
+        tsrorder:   'TSR Sub Order',
         contractor: 'Contractor Invoices',
         finance:    'Finance Sheet',
         acccheck:   'Acceptance Check'

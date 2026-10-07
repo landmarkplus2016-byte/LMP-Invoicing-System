@@ -1799,3 +1799,48 @@ footer p + p {
     min-width: 140px;
   }
 }
+
+/* =============================================================================
+   TSR Sub Order Tab (reuses the Acceptance Check controls, stats and tables)
+   ============================================================================= */
+
+.file-cards.tso-file-cards {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.tso-input-amount {
+  width: 200px;
+}
+
+.tso-amount-hint {
+  margin-top: 0.4rem;
+  font-size: 0.8rem;
+  color: #4a5568;
+}
+.tso-amount-hint.tso-amount-bad {
+  color: #c53030;
+  font-weight: 600;
+}
+
+.tso-results-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.tso-h3 {
+  margin: 1.25rem 0 0.5rem;
+  font-size: 1rem;
+  color: #1a3a5c;
+}
+
+@media (max-width: 768px) {
+  .file-cards.tso-file-cards {
+    grid-template-columns: 1fr;
+  }
+  .tso-input-amount {
+    width: 100%;
+  }
+}

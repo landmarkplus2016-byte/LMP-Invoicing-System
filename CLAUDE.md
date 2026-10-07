@@ -17,6 +17,7 @@ All logic lives in six files loaded by `index.html` as plain `<script>` tags:
 | `poc-app.js` | POC Invoice Prep — reads one Excel file, filters rows, exports styled XLSX |
 | `tsr-app.js` | TSR Sub Prep — reads two Excel files, cross-references them, exports XLSX |
 | `tsr-validation-app.js` | TSR Sub Validation — validates a TSR submission against Excel/PDF mail attachments |
+| `tsr-order-app.js` | TSR Sub Order — lists one TSR Sub#'s tasks in acceptance-mail order, capped by TSR qty, up to a target amount |
 | `contractor-app.js` | Contractor Invoices — four sub-tabs (2026 Tasks, Pre-2026 Tasks, TX-RX Tasks, POC Invoices), generates one styled XLSX per contractor |
 | `finance-app.js` | Finance Sheet — two sub-tabs (TX-RF Track, POC Tracking), filters by invoice numbers, exports styled XLSX |
 | `acceptance-check-app.js` | Acceptance Check — compares tracking line items for one week + area against the acceptance sheet (`Total` tab) and lists mismatches |
@@ -292,6 +293,22 @@ This ensures **both rows in every swap are flagged**, not just the second one. U
 - TOC folders show a teal **TOC** badge and teal left border
 - Per-row table: TSR Row #, Site ID, Facing #, Item Description, Certificate #, Status badge, Issues list
 - Order errors report the specific other row they're swapped with and both Excel positions
+
+## TSR Sub Order (`tsr-order-app.js`)
+
+Builds a TSR submission from one **TSR Sub#** in the order the tasks appear in the weekly acceptance mails. All element IDs use the `tso-*` prefix.
+
+**Inputs:** Tracking file (sheet `Invoicing Track`, header row found by scanning for "Logical Site" + "Acceptance Week"), TSR file (sheet `Request Form - VF`, same Item Description / Remaining detection as TSR Sub Prep), a **mails folder**, the **TSR Sub#** (`<select>` listing every distinct value in the tracking column whose header contains `tsr` + `sub`) and a **Target Amount** (`500000`, `500,000`, `500K`, `1.5M`; blank = no limit).
+
+**Mails folder:** one parent folder with `Upper-Cairo`, `Alex` and `Delta` sub-folders. Area comes from the deepest folder name (`alex` → A, `delta` → D, `upper`/`cairo`/`giza` → U), else from the mail name. Weeks = every number after a `W` in the mail name (`… Status W34-2026` → 34; `… 26W03-W04` → 3, 4); year from `20xx` or the 2 digits before `W`. `.msg`, `.eml` and direct Excel files are accepted; the first Excel attachment is read. In it, the sheet with a Site ID + Line Item header (`Site_ID` / `Item_Description` and variants, first 60 rows) is used — the one with the most rows if several.
+
+**Matching:** tracking rows with the selected Sub# (Cancelled skipped). Each Acceptance Week segment (`D-W38-W39-2026`) is mapped to mails of the same area + year that share a week number — an exact week set first, then the most recently saved file. The task is matched by Site ID (`siteKey`) + catalogue code (`itemKey`), count-aware (each mail row used once, same facing preferred).
+
+**Order:** mails oldest week first (then Alex, Delta, Upper-Cairo), then row order inside the mail.
+
+**Selection:** walk tasks in that order. Skip a task whose line item is not in the TSR or whose actual qty (`Absolute Qty × distance factor`) exceeds the TSR remaining left. Amount = `New Total`. A task that would overshoot the target is taken only if that lands closer than stopping before it; otherwise it is skipped and smaller tasks further down are still tried. Stop once the target is reached.
+
+**Export** (`TSR_Sub_<n>_Order_<date>.xlsx`): sheet `Submission` — ID#, VF Task Owner, Vendor, Logical Site ID, Site Option, Facing, Task Date, Line Item, Absolute Quantity, PRQ, Certificate #, Acceptance Status, in mail order; sheet `Not Included` — the same columns + Acceptance Week + Reason.
 
 ## Contractor App Data Flow (`contractor-app.js`)
 

@@ -11,6 +11,7 @@ const FILES = [
   './poc-app.js',
   './tsr-app.js',
   './tsr-validation-app.js',
+  './tsr-order-app.js',
   './contractor-app.js',
   './finance-app.js',
   './acceptance-check-app.js',
