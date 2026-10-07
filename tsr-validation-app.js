@@ -1,6 +1,6 @@
 // =============================================================================
 // LMP Invoicing System — TSR Sub Validation logic
-// Validates a TSR submission against Excel (regular folders) and PDF (TOC folders)
+// Validates a TSR submission against the Excel or PDF attachment in each numbered mail folder
 // attachments extracted from mail files.
 // Wrapped in IIFE to avoid global namespace collisions.
 // =============================================================================
@@ -53,19 +53,8 @@ function normalizeFolderNumber(v) {
   if (v == null || v === '' || v instanceof Date) return null;
   if (typeof v === 'number') return Math.round(v);
   const s = String(v).trim();
-  if (/^TOC/i.test(s)) return null;     // TOC folders handled by normalizeTocKey
   const m = s.match(/(\d+)/);           // first number anywhere in the string
   return m ? parseInt(m[1], 10) : null;
-}
-
-// Normalise a TOC folder identifier: "TOC 1", "TOC1", "toc-2", "TOC 2" → "TOC 1", "TOC 2"
-function normalizeTocKey(s) {
-  if (!s) return null;
-  const str = String(s).trim();
-  const m   = str.match(/TOC\s*[-\s]?\s*(\d+)/i);
-  if (m) return 'TOC ' + parseInt(m[1], 10);
-  if (/^TOC$/i.test(str)) return 'TOC 1';
-  return null;
 }
 
 // Extract catalogue-code prefix for item matching: "EX06 - ..." → "EX06"
@@ -351,9 +340,9 @@ async function parsePdfToDataRows(pdfData) {
 
 // ---------------------------------------------------------------------------
 // Build folder data map
-// Regular sub-folders (numeric name)  → Excel attachment
-// TOC sub-folders (name starts "TOC") → PDF attachment
-// Returns: Map<key, { type:'excel'|'pdf', fileName, data:Uint8Array }>
+// Every sub-folder is numbered (1, 2, 3…) — FAC and TOC alike.
+// Excel attachment preferred, PDF (Completion Certificate) accepted.
+// Returns: Map<number, { type:'excel'|'pdf', fileName, data:Uint8Array }>
 // ---------------------------------------------------------------------------
 async function buildFolderDataMap(allFiles) {
   // Group uploaded files by sub-folder name
@@ -369,70 +358,38 @@ async function buildFolderDataMap(allFiles) {
   const dataMap = new Map();
 
   for (const [subName, files] of bySubFolder) {
-    const isTocFolder = /^TOC/i.test(subName);
+    const fn = normalizeFolderNumber(subName);
+    if (fn == null || dataMap.has(fn)) continue;
 
-    if (isTocFolder) {
-      // ── TOC folder → want PDF attachment ──────────────────────────────────
-      const tocKey = normalizeTocKey(subName);
-      if (!tocKey || dataMap.has(tocKey)) continue;
-
-      // Direct PDF file in folder
-      const pdfFile = files.find(f => PDF_EXT.test(f.name));
-      if (pdfFile) {
-        const buf = await pdfFile.arrayBuffer();
-        dataMap.set(tocKey, { type: 'pdf', fileName: pdfFile.name, data: new Uint8Array(buf) });
-        continue;
-      }
-      // .msg → extract PDF attachment
-      const msgFile = files.find(f => /\.msg$/i.test(f.name));
-      if (msgFile) {
-        const r = await extractFromMsg(msgFile, PDF_EXT);
-        if (r) { dataMap.set(tocKey, { type: 'pdf', ...r }); continue; }
-      }
-      // .eml → extract PDF attachment
-      const emlFile = files.find(f => /\.eml$/i.test(f.name));
-      if (emlFile) {
-        const r = await extractFromEml(emlFile, PDF_EXT);
-        if (r) { dataMap.set(tocKey, { type: 'pdf', ...r }); continue; }
-      }
-
-    } else {
-      // ── Regular (numbered) folder → Excel preferred, PDF accepted ─────────
-      // Some numbered folders now hold a Completion Certificate PDF instead of
-      // an Excel sheet; those are validated the same way TOC folders are.
-      const fn = normalizeFolderNumber(subName);
-      if (fn == null || dataMap.has(fn)) continue;
-
-      // Direct Excel file
-      const xlFile = files.find(f => EXCEL_EXT.test(f.name));
-      if (xlFile) {
-        const buf = await xlFile.arrayBuffer();
-        dataMap.set(fn, { type: 'excel', fileName: xlFile.name, data: new Uint8Array(buf) });
-        continue;
-      }
-      // Direct PDF file
-      const pdfFile = files.find(f => PDF_EXT.test(f.name));
-      if (pdfFile) {
-        const buf = await pdfFile.arrayBuffer();
-        dataMap.set(fn, { type: 'pdf', fileName: pdfFile.name, data: new Uint8Array(buf) });
-        continue;
-      }
-      // .msg → extract Excel, else PDF attachment
-      const msgFile = files.find(f => /\.msg$/i.test(f.name));
-      if (msgFile) {
-        const r = await extractFromMsg(msgFile, EXCEL_EXT);
-        if (r) { dataMap.set(fn, { type: 'excel', ...r }); continue; }
-        const p = await extractFromMsg(msgFile, PDF_EXT);
-        if (p) { dataMap.set(fn, { type: 'pdf', ...p }); continue; }
-      }
-      // .eml → extract Excel, else PDF attachment
-      const emlFile = files.find(f => /\.eml$/i.test(f.name));
-      if (emlFile) {
-        const r = await extractFromEml(emlFile, EXCEL_EXT);
-        if (r) { dataMap.set(fn, { type: 'excel', ...r }); continue; }
-        const p = await extractFromEml(emlFile, PDF_EXT);
-        if (p) { dataMap.set(fn, { type: 'pdf', ...p }); continue; }
-      }
+    // Direct Excel file
+    const xlFile = files.find(f => EXCEL_EXT.test(f.name));
+    if (xlFile) {
+      const buf = await xlFile.arrayBuffer();
+      dataMap.set(fn, { type: 'excel', fileName: xlFile.name, data: new Uint8Array(buf) });
+      continue;
+    }
+    // Direct PDF file
+    const pdfFile = files.find(f => PDF_EXT.test(f.name));
+    if (pdfFile) {
+      const buf = await pdfFile.arrayBuffer();
+      dataMap.set(fn, { type: 'pdf', fileName: pdfFile.name, data: new Uint8Array(buf) });
+      continue;
+    }
+    // .msg → extract Excel, else PDF attachment
+    const msgFile = files.find(f => /\.msg$/i.test(f.name));
+    if (msgFile) {
+      const r = await extractFromMsg(msgFile, EXCEL_EXT);
+      if (r) { dataMap.set(fn, { type: 'excel', ...r }); continue; }
+      const p = await extractFromMsg(msgFile, PDF_EXT);
+      if (p) { dataMap.set(fn, { type: 'pdf', ...p }); continue; }
+    }
+    // .eml → extract Excel, else PDF attachment
+    const emlFile = files.find(f => /\.eml$/i.test(f.name));
+    if (emlFile) {
+      const r = await extractFromEml(emlFile, EXCEL_EXT);
+      if (r) { dataMap.set(fn, { type: 'excel', ...r }); continue; }
+      const p = await extractFromEml(emlFile, PDF_EXT);
+      if (p) { dataMap.set(fn, { type: 'pdf', ...p }); continue; }
     }
   }
 
@@ -602,12 +559,8 @@ async function runValidation() {
     const conStatus   = normalizeStr(row[colConStatus]).toUpperCase().trim();
     const isToc       = conStatus === 'TOC';
 
-    // For TOC rows: folder key is "TOC N" string.
-    // For regular rows: folder key is an integer (digits at the START of comment only,
-    // so "TOC 1" correctly gives null here, not 1).
-    const folderKey = isToc
-      ? normalizeTocKey(rawComment)
-      : normalizeFolderNumber(rawComment);
+    // Folder key is the plain folder number in the comment, for FAC and TOC rows alike
+    const folderKey = normalizeFolderNumber(rawComment);
 
     filteredRows.push({
       tsrExcelRow: i + 1,
@@ -646,7 +599,7 @@ async function runValidation() {
   // ── 4. Group TSR rows by folder key ───────────────────────────────────────
   const groups = new Map();
   for (const row of filteredRows) {
-    const key = row.folderKey;  // integer for regular, "TOC N" for TOC, null if unknown
+    const key = row.folderKey;  // folder number, null if unknown
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(row);
   }
@@ -657,16 +610,13 @@ async function runValidation() {
 
   const sortedKeys = [...groups.keys()].sort((a, b) => {
     if (a == null) return 1; if (b == null) return -1;
-    // Sort: regular folders first (integers), then TOC folders (strings)
-    if (typeof a === 'number' && typeof b === 'number') return a - b;
-    if (typeof a === 'number') return -1;
-    if (typeof b === 'number') return 1;
-    return String(a).localeCompare(String(b));
+    return a - b;
   });
 
   for (const folderKey of sortedKeys) {
     const groupRows = groups.get(folderKey);
-    const isTocGroup = typeof folderKey === 'string' && folderKey.startsWith('TOC');
+    // TOC badge only — a TOC folder is routed and validated like any other folder
+    const isTocGroup = groupRows.some(r => r.isToc);
 
     // Handle unknown folder key (null)
     if (folderKey == null) {
@@ -687,9 +637,7 @@ async function runValidation() {
     if (!folderData) {
       const inFolder = _folderFiles.filter(f => {
         const sub = f.webkitRelativePath.split('/')[1] ?? '';
-        return isTocGroup
-          ? normalizeTocKey(sub) === folderKey
-          : normalizeFolderNumber(sub) === folderKey;
+        return normalizeFolderNumber(sub) === folderKey;
       });
       const found = inFolder.length
         ? 'Files found: ' + inFolder.map(f => f.name).join(', ')
@@ -697,12 +645,12 @@ async function runValidation() {
       folderResults.push({
         folderKey, isToc: isTocGroup, fileName: null,
         globalError:
-          'Could not extract ' + (isTocGroup ? 'PDF' : 'Excel or PDF') +
+          'Could not extract Excel or PDF' +
           ' from folder "' + folderKey + '". ' + found +
           ' (supports direct file, Outlook .msg, or .eml)',
         rows: groupRows.map(r => ({
           ...r, status: 'error',
-          issues: ['No ' + (isTocGroup ? 'PDF' : 'Excel/PDF') + ' data for folder "' + folderKey + '"'],
+          issues: ['No Excel/PDF data for folder "' + folderKey + '"'],
           excelPos: null
         }))
       });

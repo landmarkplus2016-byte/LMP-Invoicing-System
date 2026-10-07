@@ -184,7 +184,7 @@ Validates a TSR submission by comparing it against Excel or PDF attachments extr
 ### UI
 
 - **TSR File upload** — the `.xlsb` TSR file (sheet `PO Break Down- Contractor & Acc`)
-- **TSR Mails Folder upload** — a folder whose sub-folders are numbered (1, 2, 3…) or named TOC (TOC 1, TOC 2…). Each sub-folder contains an email (`.msg` or `.eml`) whose attachment is the reference file, or a direct `.xlsx`/`.pdf` file.
+- **TSR Mails Folder upload** — a folder whose sub-folders are numbered (1, 2, 3…) — FAC and TOC folders alike. Each sub-folder contains an email (`.msg` or `.eml`) whose attachment is the reference file, or a direct `.xlsx`/`.pdf` file.
 - **Submission Number** — integer typed by the user; filters TSR rows by the Submission # column
 
 Both file inputs show an animated progress bar while loading. Results show a grey diagnostic strip listing the detected column letters for each field.
@@ -207,26 +207,17 @@ Header row is located by scanning ALL rows for one that contains both `"item des
 
 **Submission # value normalisation** — `extractNumber()` handles any format: bare integer `5`, float `5.0`, text `"Submission 5"`, `"Sub 5"` etc. Date objects are ignored (return `null`).
 
-**Contractor Comments → folder key:**
-- `normalizeFolderNumber()` — finds the first digit sequence **anywhere** in the comment (not just the start), but returns `null` for strings starting with `"TOC"`. Handles `"Folder 1"`, `"Folder 1 (not the same link)"`, `"1"`, `"1.0"` → all → `1`.
-- `normalizeTocKey()` — handles `"TOC 1"`, `"TOC1"`, `"toc-2"` → `"TOC 1"`, `"TOC 2"`.
-
-**Row routing:**
-- Contractor Status = `"TOC"` → `folderKey = normalizeTocKey(comment)` (string, e.g. `"TOC 1"`)
-- Anything else → `folderKey = normalizeFolderNumber(comment)` (integer, e.g. `1`)
+**Contractor Comments → folder key (FAC and TOC rows alike):**
+- `folderKey = normalizeFolderNumber(comment)` — finds the first digit sequence **anywhere** in the comment. Handles `"Folder 1"`, `"Folder 1 (not the same link)"`, `"1"`, `"1.0"` → all → `1`.
+- There is **no "TOC N" rule any more** — every mail folder is a plain number, whether its rows are FAC or TOC. Contractor Status = `"TOC"` only sets `isToc` on the row, which gives the folder section a teal **TOC** badge; it does not change routing or validation.
 
 ### Folder Map Construction (`buildFolderDataMap`)
 
-Iterates all uploaded files grouped by sub-folder name:
+Iterates all uploaded files grouped by sub-folder name. Every sub-folder is keyed by its number (`normalizeFolderNumber(subName)`); sub-folders with no number are ignored.
 
-| Sub-folder starts with `"TOC"` | Sub-folder is numeric |
-|---|---|
-| TOC folder → extract **PDF** attachment | Regular folder → extract **Excel** attachment, else **PDF** |
-| Key: `"TOC N"` string | Key: integer |
+For each folder: Excel preferred, PDF (Completion Certificate) accepted — tries direct Excel → direct PDF → `.msg` attachment (Excel, else PDF) → `.eml` attachment (Excel, else PDF).
 
-For each folder, tries in priority order: direct file → `.msg` email → `.eml` email.
-
-**Numbered folders may hold a PDF instead of an Excel.** Some numbered folders now contain only a Completion Certificate PDF. `buildFolderDataMap` prefers Excel and falls back to PDF (direct file, then `.msg`/`.eml` attachment). The validation path is chosen by the **attachment type actually found** (`folderData.type`), not by the folder name — so a numbered folder with a PDF is validated with the PDF rules below. Such folders show a grey **PDF** badge in the results header.
+The validation path is chosen by the **attachment type actually found** (`folderData.type`) — an Excel is validated with the Excel rules, a PDF with the PDF rules below. PDF folders that hold no TOC rows show a grey **PDF** badge in the results header.
 
 - `.msg` parsing: `@kenjiuno/msgreader` loaded via `import('https://esm.sh/@kenjiuno/msgreader')` (cached after first load)
 - `.eml` parsing: plain text MIME parser (base64 attachment extraction, no library)
@@ -506,4 +497,4 @@ The `formatDate()` function remains in the codebase but is no longer used for Ex
 
 ## Service Worker Cache
 
-When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v24` → `lmp-invoicing-v25`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v34`.
+When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v24` → `lmp-invoicing-v25`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v35`.
