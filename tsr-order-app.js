@@ -74,11 +74,28 @@ const ITEM_ALIASES = {
   DS07: 'DS09'   // "DS07 - Dismantle & Return Microwave Link or Dish" = "DS09 - Dismantle & Return Microwave Link"
 };
 
+// Items merged by description between the old and new price lists — checked
+// before the code, because a merged item's new code may be reused or missing.
+//   RF01 "… Three (3) Technologies" + RF02 "… Four (4) Technologies"
+//     = RF01 "New Macro / Mega Site - Up to four (4) Technologies"
+//   RF03 "… Five (5) Technologies" + RF04 "… More than Five (5) Technologies"
+//     = "New Macro / Mega Site - Five (5) or more than Five (5) Technologies"
+const isMacro = t => /macro\s*\/\s*mega\s+site/.test(t);
+const hasFive = t => /\bfive\b|\(5\)/.test(t);
+const ITEM_GROUPS = [
+  { key: 'RF-MACRO-5PLUS', test: t => isMacro(t) && hasFive(t) },
+  { key: 'RF-MACRO-UPTO4', test: t => isMacro(t) && /\b(three|four)\b|\([34]\)/.test(t) }
+];
+
 // Catalogue code of a line item: "TX09 - IDU Upgrade" → "TX09", "EX6" → "EX06".
-// Renamed codes are mapped through ITEM_ALIASES ("DS07" → "DS09").
+// Merged items resolve to their ITEM_GROUPS key; renamed codes are mapped
+// through ITEM_ALIASES ("DS07" → "DS09").
 // Items without a code fall back to their normalised full text.
 function itemKey(desc) {
   const s = str(desc);
+  const t = s.toLowerCase();
+  const group = ITEM_GROUPS.find(g => g.test(t));
+  if (group) return group.key;
   const m = s.match(/^([A-Za-z]{1,4})\s*[-.]?\s*(\d{1,3})\b/);
   if (m) {
     const code = m[1].toUpperCase() + String(parseInt(m[2], 10)).padStart(2, '0');
