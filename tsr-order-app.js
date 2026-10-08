@@ -772,38 +772,92 @@ async function runOrder() {
   // ── 2. Order: mail order (oldest week first), then row order inside the mail
   found.sort((a, b) => a.mail.rank - b.mail.rank || a.mailRow.pos - b.mailRow.pos);
 
-  // ── 3. Pick tasks in that order up to the target amount ──────────────────
-  // Every task must fit in the TSR remaining quantity of its line item.
-  // A task that would overshoot is taken only if that lands closer to the
-  // target than stopping before it; otherwise it is skipped and smaller tasks
-  // further down the list are still tried.
+  // ── 3. Group by site inside each mail — a site is submitted with ALL the
+  // items its mail lists for it, or not at all (never a partial site).
+  const groups = new Map();   // "mail path|site" → { mail, site, tasks }
+  for (const t of found) {
+    const gk = t.mail.path + '|' + t.site;
+    if (!groups.has(gk)) groups.set(gk, { mail: t.mail, site: t.site, tasks: [] });
+    groups.get(gk).tasks.push(t);
+  }
+
+  // Where a mail item with no task in this Sub# sits in the tracking
+  const scopeSet = new Set(scope);
+  function whereInTracking(site, key) {
+    const hits = _trk.tasks.filter(x => x.site === site && x.key === key);
+    if (!hits.length) return 'not in tracking (or Cancelled)';
+    const other = hits.find(x => !scopeSet.has(x));
+    if (other) return 'tracking row ' + other.excelRow + ' is in TSR Sub# ' + (other.subRaw || '(blank)');
+    return 'tracking row ' + hits[0].excelRow + ' was matched to another mail';
+  }
+
+  // ── 4. Pick whole sites in mail order up to the target amount ────────────
+  // Every task of the site must fit in the TSR remaining quantity of its line
+  // item. A site that would overshoot is taken only if that lands closer to
+  // the target than stopping before it; otherwise it is skipped and smaller
+  // sites further down the list are still tried.
   const avail = new Map(_tsr.items);
   const selected = [];
   const skipped  = [];
   let total = 0;
 
-  for (const t of found) {
-    if (target != null && total >= target) {
-      skipped.push({ ...t, reason: 'Target amount reached' }); continue;
-    }
-    const k = tsrKey(t.item);
-    if (k === null) { skipped.push({ ...t, reason: 'Line item not in the TSR' }); continue; }
-    const left = avail.get(k);
-    if (t.qty > left + 0.005) {
-      skipped.push({ ...t, reason: 'Not enough TSR quantity — needs ' + fmtQty(t.qty) +
-        ', ' + fmtQty(Math.max(left, 0)) + ' left' });
+  const dropSite = (g, reason) => {
+    for (const t of g.tasks) skipped.push({ ...t, reason: 'Whole site left out — ' + reason });
+  };
+
+  for (const g of groups.values()) {
+    // Mail rows of this site that no task of this Sub# matched
+    const parsed  = _mailCache.get(g.mail.path);
+    const missing = parsed.rows.filter(r => r.site === g.site && !used.has(g.mail.path + '|' + r.pos));
+    if (missing.length) {
+      dropSite(g, 'Site has ' + missing.length + ' more item' + (missing.length !== 1 ? 's' : '') +
+        ' in the mail not in this Sub#: ' +
+        missing.map(r => r.item + ' (' + whereInTracking(g.site, r.key) + ')').join('; '));
       continue;
     }
-    if (target != null && total + t.amount > target &&
-        total + t.amount - target >= target - total) {
-      skipped.push({ ...t, reason: 'Would move the total further from the target' }); continue;
+
+    if (target != null && total >= target) { dropSite(g, 'Target amount reached'); continue; }
+
+    // TSR quantity, summed per TSR item over the whole site
+    const need = new Map();
+    let problem = null;
+    for (const t of g.tasks) {
+      const k = tsrKey(t.item);
+      if (k === null) { problem = t.item + ' is not in the TSR'; break; }
+      need.set(k, (need.get(k) || 0) + t.qty);
     }
-    avail.set(k, left - t.qty);
-    total += t.amount;
-    selected.push({ ...t, cum: total });
+    if (!problem) {
+      for (const [k, q] of need) {
+        const left = avail.get(k);
+        if (q > left + 0.005) {
+          problem = 'Not enough TSR quantity for ' + k + ' — needs ' + fmtQty(q) +
+            ', ' + fmtQty(Math.max(left, 0)) + ' left';
+          break;
+        }
+      }
+    }
+    if (problem) { dropSite(g, problem); continue; }
+
+    const amount = g.tasks.reduce((s, t) => s + t.amount, 0);
+    if (target != null && total + amount > target &&
+        total + amount - target >= target - total) {
+      dropSite(g, 'Would move the total further from the target (site total ' + fmtEGP(amount) + ')');
+      continue;
+    }
+    for (const [k, q] of need) avail.set(k, avail.get(k) - q);
+    total += amount;
+    selected.push(...g.tasks);
   }
 
-  // ── 4. Number the mails holding selected tasks 1, 2, 3… in mail order ────
+  // Back to mail order (sites can interleave in a mail), with the running total
+  selected.sort((a, b) => a.mail.rank - b.mail.rank || a.mailRow.pos - b.mailRow.pos);
+  let cum = 0;
+  for (let i = 0; i < selected.length; i++) {
+    cum += selected[i].amount;
+    selected[i] = { ...selected[i], cum };
+  }
+
+  // ── 5. Number the mails holding selected tasks 1, 2, 3… in mail order ────
   const folders = [...new Set(selected.map(t => t.mail))].sort((a, b) => a.rank - b.rank);
   const folderOf = new Map(folders.map((m, i) => [m, i + 1]));
   for (const t of selected) t.folder = folderOf.get(t.mail);
