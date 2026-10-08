@@ -68,12 +68,22 @@ function siteKey(v) {
   return /^\d+$/.test(s) ? String(parseInt(s, 10)) : s;
 }
 
+// Codes renamed between the old and new price lists — the same task, so they
+// compare as one. Key = alternative code, value = the code it is treated as.
+const ITEM_ALIASES = {
+  DS07: 'DS09'   // "DS07 - Dismantle & Return Microwave Link or Dish" = "DS09 - Dismantle & Return Microwave Link"
+};
+
 // Catalogue code of a line item: "TX09 - IDU Upgrade" → "TX09", "EX6" → "EX06".
+// Renamed codes are mapped through ITEM_ALIASES ("DS07" → "DS09").
 // Items without a code fall back to their normalised full text.
 function itemKey(desc) {
   const s = str(desc);
   const m = s.match(/^([A-Za-z]{1,4})\s*[-.]?\s*(\d{1,3})\b/);
-  if (m) return m[1].toUpperCase() + String(parseInt(m[2], 10)).padStart(2, '0');
+  if (m) {
+    const code = m[1].toUpperCase() + String(parseInt(m[2], 10)).padStart(2, '0');
+    return ITEM_ALIASES[code] || code;
+  }
   return s.toLowerCase().replace(/\s+/g, ' ');
 }
 
@@ -385,11 +395,16 @@ function readTsr(wb) {
   return { items, col: { item: cItem, price: cPrice, remaining: cRem }, headerRow: hdr + 1 };
 }
 
-// Canonical TSR item for a tracking line item: exact name, else one contains the other
+// Canonical TSR item for a tracking line item: exact name, else one contains the
+// other, else the same catalogue code (aliases included, e.g. DS07 ↔ DS09)
 function tsrKey(lineItem) {
   if (_tsr.items.has(lineItem)) return lineItem;
   for (const key of _tsr.items.keys()) {
     if (key.includes(lineItem) || lineItem.includes(key)) return key;
+  }
+  const code = itemKey(lineItem);
+  for (const key of _tsr.items.keys()) {
+    if (itemKey(key) === code) return key;
   }
   return null;
 }

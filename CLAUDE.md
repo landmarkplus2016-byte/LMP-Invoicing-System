@@ -306,6 +306,8 @@ Builds a TSR submission from one **TSR Sub#** in the order the tasks appear in t
 
 **Matching:** tracking rows with the selected Sub# (Cancelled skipped). Each Acceptance Week segment (`D-W38-W39-2026`) is mapped to mails of the same area + year that share a week number — an exact week set first, then the most recently saved file. The task is matched by Site ID (`siteKey`) + catalogue code (`itemKey`), count-aware (each mail row used once, same facing preferred).
 
+**Renamed codes (`ITEM_ALIASES`)** — the new price list renamed some codes for the same task, so the tracking and the mail can disagree (`DS07 - Dismantle & Return Microwave Link or Dish` = `DS09 - Dismantle & Return Microwave Link`). `itemKey()` maps an alias to its canonical code (`DS07` → `DS09`), so they match each other; `tsrKey()` also falls back to a same-code match so the item is found in the TSR under either name. Add new pairs to `ITEM_ALIASES`.
+
 **Corrections from the mail (`applyMailFixes`)** — the TSR Sub Validation Excel rules applied up front, with the mail row as the reference: the mail's **Request #** column must equal **Certificate #**, and its **Facing** must equal the tracking Facing. A blank or different tracking value is replaced by the mail value (`NA`, `N/A`, `-` count as blank on both sides). A blank mail Request # never overwrites the Certificate #, but a blank (or `NA`) mail **Facing** — when the mail sheet has a Facing column — **clears** the tracking Facing, including an `NA` ("Facing … removed (blank in mail)"). Each change is recorded in `task.fixes` (`{ field, text }`): shown in a "Corrected from mail" column on screen, a yellow banner with counts, yellow-filled cells in the export and a **Corrected from Mail** column at the end of the `Submission` sheet. Site ID and Line Item need no correction — they are the match key.
 
 **Order:** mails oldest week first (then Alex, Delta, Upper-Cairo), then row order inside the mail.
@@ -524,4 +526,4 @@ The `formatDate()` function remains in the codebase but is no longer used for Ex
 
 ## Service Worker Cache
 
-When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v24` → `lmp-invoicing-v25`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v36`.
+When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v24` → `lmp-invoicing-v25`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v37`.
