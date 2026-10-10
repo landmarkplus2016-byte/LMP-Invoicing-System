@@ -347,7 +347,7 @@
                 <datalist id="tso-sub-list"></datalist>
               </div>
               <div class="acc-control">
-                <label for="tso-amount">Target Amount (EGP)</label>
+                <label for="tso-amount">Target Amount (EGP, reference)</label>
                 <input type="text" id="tso-amount" class="acc-input tso-input-amount" placeholder="e.g. 500K or 500,000" />
               </div>
               <button id="tso-btn-run" class="btn-primary" disabled>&#128233;&nbsp; Build Submission</button>
@@ -362,7 +362,9 @@
               Each task's Acceptance Week picks the mail: <code>U-W20-2026</code> &rarr; Upper-Cairo mail W20,
               <code>A-W29-2026</code> &rarr; Alex mail W29, <code>D-W38-W39-2026</code> &rarr; Delta mail W38-W39.
               Tasks are listed in the order they appear in the mail's Excel attachment, each line item is
-              capped by the TSR remaining quantity, and tasks are taken in that order until the target amount is reached.
+              capped by the TSR remaining quantity. Whole mails are taken, oldest first: every item of a mail that fits
+              the TSR is selected, even past the target. The target amount is only a reference for when to stop
+              starting new mails, so the total can end up above or below it.
             </p>
           </section>
 

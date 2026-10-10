@@ -314,10 +314,12 @@ Builds a TSR submission from one **TSR Sub#** in the order the tasks appear in t
 
 **Order:** mails oldest week first (then Alex, Delta, Upper-Cairo), then row order inside the mail.
 
-**Selection — whole sites only:** found tasks are grouped by **mail + Site ID**; a site is taken with every item its mail lists for it, or left out entirely (never a partial site). Groups are walked in mail order (first row of the site). A site is left out (every task gets a "Whole site left out — …" reason) when:
+**Selection — whole mails, whole sites:** the acceptance mail is the unit (optimising the acceptance sheet comes first; the **Target Amount is only a reference**). Mails are walked in mail order; once a mail is started, **every** site in it that fits the TSR is taken, even past the target. The target only decides whether to start the next mail (`total >= target` → the remaining mails are not started). Inside a mail, found tasks are grouped by **Site ID**; a site is taken with every item its mail lists for it, or left out entirely (never a partial site). A site is left out (every task gets a "Whole site left out — …" reason) when:
 - the mail lists an item for that site that no task of this Sub# matched — the reason names it and where it is in the tracking (another TSR Sub#, matched to another mail, or not in tracking / Cancelled);
 - any of its line items is not in the TSR, or the site's actual qty (`Absolute Qty × distance factor`, summed per TSR item) exceeds the TSR remaining left;
-- the target is already reached, or adding the site total would overshoot and land further from the target than stopping before it (smaller sites further down are still tried).
+- the target was already reached before its mail was started.
+
+The Mails used list shows "n of N" rows taken per mail and flags a mail that was only partly taken.
 
 Amount = `New Total`. The selected list is re-sorted to mail order and the running total recomputed.
 
@@ -533,4 +535,4 @@ The `formatDate()` function remains in the codebase but is no longer used for Ex
 
 ## Service Worker Cache
 
-When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v24` → `lmp-invoicing-v25`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v39`.
+When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v24` → `lmp-invoicing-v25`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v40`.

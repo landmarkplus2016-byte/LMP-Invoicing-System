@@ -791,11 +791,12 @@ async function runOrder() {
     return 'tracking row ' + hits[0].excelRow + ' was matched to another mail';
   }
 
-  // ── 4. Pick whole sites in mail order up to the target amount ────────────
-  // Every task of the site must fit in the TSR remaining quantity of its line
-  // item. A site that would overshoot is taken only if that lands closer to
-  // the target than stopping before it; otherwise it is skipped and smaller
-  // sites further down the list are still tried.
+  // ── 4. Pick whole mails, oldest first ────────────────────────────────────
+  // The acceptance mail is the unit: once a mail is started, EVERY site in it
+  // that fits the TSR is taken, even past the target. The target is only a
+  // reference — it decides whether to start the next mail, never cuts a mail
+  // short. Every task of a site must fit in the TSR remaining quantity of its
+  // line item, else the whole site is left out (the rest of the mail is kept).
   const avail = new Map(_tsr.items);
   const selected = [];
   const skipped  = [];
@@ -805,7 +806,22 @@ async function runOrder() {
     for (const t of g.tasks) skipped.push({ ...t, reason: 'Whole site left out — ' + reason });
   };
 
+  // Site groups per mail, in mail order (groups were built from mail-ordered tasks)
+  const byMail = new Map();   // mail → [site group]
   for (const g of groups.values()) {
+    if (!byMail.has(g.mail)) byMail.set(g.mail, []);
+    byMail.get(g.mail).push(g);
+  }
+
+  for (const [mail, sites] of byMail) {
+    if (target != null && total >= target) {
+      for (const g of sites) dropSite(g, 'Target amount reached before this mail (' + mail.name + ')');
+      continue;
+    }
+    for (const g of sites) takeSite(g);
+  }
+
+  function takeSite(g) {
     // Mail rows of this site that no task of this Sub# matched
     const parsed  = _mailCache.get(g.mail.path);
     const missing = parsed.rows.filter(r => r.site === g.site && !used.has(g.mail.path + '|' + r.pos));
@@ -813,10 +829,8 @@ async function runOrder() {
       dropSite(g, 'Site has ' + missing.length + ' more item' + (missing.length !== 1 ? 's' : '') +
         ' in the mail not in this Sub#: ' +
         missing.map(r => r.item + ' (' + whereInTracking(g.site, r.key) + ')').join('; '));
-      continue;
+      return;
     }
-
-    if (target != null && total >= target) { dropSite(g, 'Target amount reached'); continue; }
 
     // TSR quantity, summed per TSR item over the whole site
     const need = new Map();
@@ -836,16 +850,10 @@ async function runOrder() {
         }
       }
     }
-    if (problem) { dropSite(g, problem); continue; }
+    if (problem) { dropSite(g, problem); return; }
 
-    const amount = g.tasks.reduce((s, t) => s + t.amount, 0);
-    if (target != null && total + amount > target &&
-        total + amount - target >= target - total) {
-      dropSite(g, 'Would move the total further from the target (site total ' + fmtEGP(amount) + ')');
-      continue;
-    }
     for (const [k, q] of need) avail.set(k, avail.get(k) - q);
-    total += amount;
+    total += g.tasks.reduce((s, t) => s + t.amount, 0);
     selected.push(...g.tasks);
   }
 
@@ -910,9 +918,10 @@ function renderResults(r) {
     banner = '<div class="acc-banner acc-banner-ok">All ' + r.selected.length +
       ' tasks found in the mails that fit the TSR are selected: ' + fmtEGP(r.total) + '.</div>';
   } else {
-    banner = '<div class="acc-banner ' + (Math.abs(diff) <= r.target * 0.05 ? 'acc-banner-ok' : 'acc-banner-fail') + '">' +
-      'Selected ' + fmtEGP(r.total) + ' against a target of ' + fmtEGP(r.target) +
-      ' (' + (diff >= 0 ? '+' : '−') + fmtEGP(Math.abs(diff)) + ').</div>';
+    banner = '<div class="acc-banner acc-banner-ok">' +
+      'Selected ' + fmtEGP(r.total) + ' against a reference target of ' + fmtEGP(r.target) +
+      ' (' + (diff >= 0 ? '+' : '−') + fmtEGP(Math.abs(diff)) + '). ' +
+      'Whole acceptance mails are taken, so the total can be above or below the target.</div>';
   }
 
   el('tso-summary').innerHTML =
@@ -997,7 +1006,8 @@ function renderResults(r) {
           '<td class="acc-sub">' + (p.error ? '<span class="acc-item-bad">' + escHtml(p.error) + '</span>'
             : escHtml(p.attachment) + ' — sheet "' + escHtml(p.sheet) + '", header row ' + p.headerRow +
               ', ' + p.rows.length + ' rows') + '</td>' +
-          '<td>' + n + '</td>' +
+          '<td>' + (p.error ? n : n + ' of ' + p.rows.length +
+            (n && n < p.rows.length ? ' <span class="acc-item-bad">(partial)</span>' : '')) + '</td>' +
         '</tr>';
       }).join('') +
       _ignored.map(f =>
