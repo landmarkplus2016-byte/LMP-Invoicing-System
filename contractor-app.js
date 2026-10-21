@@ -946,7 +946,7 @@ function extractTxRxRows() {
   const dataRows = allRows.slice(4);
 
   let cJob = -1, cSite = -1, cFacing = -1, cContractor2 = -1;
-  let cContractor = -1, cVfInvoice = -1;
+  let cContractor = -1, cVfInvoice = -1, cConInv = -1;
 
   header.forEach((h, i) => {
     const t = String(h ?? '').trim().toLowerCase();
@@ -954,6 +954,7 @@ function extractTxRxRows() {
     if (t.includes('logical site'))                                                  cSite        = i;
     if ((t === 'facing' || t.includes('facing')) && !t.includes('re'))              cFacing      = i;
     if (t.includes('vf invoice') && !t.includes('date'))                            cVfInvoice   = i;
+    if (t.includes('contractor invoice') && !t.includes('date'))                    cConInv      = i;
     if (cContractor2 === -1 && t.includes('contractor') && t.includes('2') && !t.includes('invoice'))
                                                                                      cContractor2 = i;
     else if (t === 'contractor' || (t.includes('contractor') && !t.includes('invoice') && cContractor === -1))
@@ -963,6 +964,7 @@ function extractTxRxRows() {
   const cLineItem = 18;
   if (cContractor  < 0) throw new Error('Column "Contractor" not found.');
   if (cVfInvoice   < 0) throw new Error('Column "VF Invoice #" not found.');
+  if (cConInv      < 0) throw new Error('Column "Contractor Invoice #" not found.');
   if (cContractor2 < 0) throw new Error('Column "Contractor2" (contractor portion) not found.');
 
   const rows = [];
@@ -978,6 +980,7 @@ function extractTxRxRows() {
       price:      parseAmount(row[cContractor2]),
       contractor: norm,
       vfInvoice:  String(row[cVfInvoice] ?? '').trim(),
+      conInvoice: String(row[cConInv]    ?? '').trim(),
     });
   }
 
@@ -988,23 +991,29 @@ function extractTxRxRows() {
 }
 
 function populateTxRxFilter(rows) {
-  const vfSet  = new Set();
-  const conSet = new Set();
+  const vfSet     = new Set();
+  const conSet    = new Set();
+  const conInvSet = new Set();
   rows.forEach(r => {
     if (r.vfInvoice)  vfSet.add(r.vfInvoice);
     if (r.contractor) conSet.add(r.contractor);
+    if (r.conInvoice) conInvSet.add(r.conInvoice);
   });
-  const dlVf  = document.getElementById('contxrx-filter-vf-list');
-  const dlCon = document.getElementById('contxrx-filter-contractor-list');
-  if (dlVf)  dlVf.innerHTML  = [...vfSet].sort().map(v => `<option value="${esc(v)}"></option>`).join('');
-  if (dlCon) dlCon.innerHTML = [...conSet].sort().map(v => `<option value="${esc(v)}"></option>`).join('');
+  const dlVf     = document.getElementById('contxrx-filter-vf-list');
+  const dlCon    = document.getElementById('contxrx-filter-contractor-list');
+  const dlConInv = document.getElementById('contxrx-filter-coninv-list');
+  if (dlVf)     dlVf.innerHTML     = [...vfSet].sort().map(v => `<option value="${esc(v)}"></option>`).join('');
+  if (dlCon)    dlCon.innerHTML    = [...conSet].sort().map(v => `<option value="${esc(v)}"></option>`).join('');
+  if (dlConInv) dlConInv.innerHTML = [...conInvSet].sort().map(v => `<option value="${esc(v)}"></option>`).join('');
 }
 
 document.getElementById('contxrx-filter-vf').addEventListener('input',         onTxRxFilterChange);
 document.getElementById('contxrx-filter-contractor').addEventListener('input',  onTxRxFilterChange);
+document.getElementById('contxrx-filter-coninv').addEventListener('input',      onTxRxFilterChange);
 document.getElementById('btn-contxrx-clear-filter').addEventListener('click', () => {
   document.getElementById('contxrx-filter-vf').value         = '';
   document.getElementById('contxrx-filter-contractor').value = '';
+  document.getElementById('contxrx-filter-coninv').value     = '';
   onTxRxFilterChange();
 });
 
@@ -1017,9 +1026,11 @@ function getTxRxFilteredGroups() {
   if (!_allRowsTxRx) return new Map();
   const vf  = document.getElementById('contxrx-filter-vf').value.trim().toLowerCase();
   const con = document.getElementById('contxrx-filter-contractor').value.trim().toLowerCase();
+  const inv = document.getElementById('contxrx-filter-coninv').value.trim().toLowerCase();
   const filtered = _allRowsTxRx.filter(r => {
     if (vf  && !String(r.vfInvoice  ?? '').toLowerCase().includes(vf))  return false;
     if (con && !String(r.contractor ?? '').toLowerCase().includes(con)) return false;
+    if (inv && !String(r.conInvoice ?? '').toLowerCase().includes(inv)) return false;
     return true;
   });
   const groups = new Map();
