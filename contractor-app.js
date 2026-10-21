@@ -510,6 +510,10 @@ function extractPocConRows() {
     if (cm.conMig   === undefined && t.includes('contractor') && t.includes('portion') && t.includes('mig'))      cm.conMig   = i;
     if (cm.invMig   === undefined && (t.includes('invoice') || t.includes('invoice#')) && t.includes('mig') && !t.includes('contractor'))
                                                                                                                    cm.invMig   = i;
+    if (cm.conInvIns === undefined && t.includes('inst') && t.includes('contractor') && t.includes('invoice') && !t.includes('date'))
+                                                                                                                   cm.conInvIns = i;
+    if (cm.conInvMig === undefined && t.includes('migr') && t.includes('contractor') && t.includes('invoice') && !t.includes('date'))
+                                                                                                                   cm.conInvMig = i;
   });
 
   const required = {
@@ -548,6 +552,7 @@ function extractPocConRows() {
         lmp:       toNum(gv(row, 'lmpIns')),
         newTotal:  halfTotal,
         vfInvoice: String(gv(row, 'invIns')).trim(),
+        conInvoice: String(gv(row, 'conInvIns')).trim(),
       });
     }
 
@@ -561,6 +566,7 @@ function extractPocConRows() {
         lmp:       toNum(gv(row, 'lmpMig')),
         newTotal:  halfTotal,
         vfInvoice: String(gv(row, 'invMig')).trim(),
+        conInvoice: String(gv(row, 'conInvMig')).trim(),
       });
     }
   }
@@ -569,28 +575,47 @@ function extractPocConRows() {
   return rows;
 }
 
-function populatePocConFilter(rows) {
-  const vfSet = new Set();
-  rows.forEach(r => { if (r.vfInvoice) vfSet.add(r.vfInvoice); });
-  const dlPocCon = document.getElementById('con-poc-filter-vf-list');
-  if (dlPocCon) dlPocCon.innerHTML = [...vfSet].sort().map(v => `<option value="${esc(v)}"></option>`).join('');
+// Same linked-filter behaviour as TX-RX: each dropdown lists only the values
+// found in rows matching the OTHER filters.
+const POCCON_FILTERS = [
+  ['vfInvoice',  'con-poc-filter-vf'],
+  ['contractor', 'con-poc-filter-contractor'],
+  ['conInvoice', 'con-poc-filter-coninv'],
+];
+
+function pocConRowMatches(r, skipKey) {
+  for (const [key, id] of POCCON_FILTERS) {
+    if (key === skipKey) continue;
+    const q = document.getElementById(id).value.trim().toLowerCase();
+    if (q && !String(r[key] ?? '').toLowerCase().includes(q)) return false;
+  }
+  return true;
 }
 
-document.getElementById('con-poc-filter-vf').addEventListener('input', onPocConFilterChange);
+function populatePocConFilter(rows) {
+  for (const [key, id] of POCCON_FILTERS) {
+    const set = new Set();
+    rows.forEach(r => { if (r[key] && pocConRowMatches(r, key)) set.add(r[key]); });
+    const dl = document.getElementById(id + '-list');
+    if (dl) dl.innerHTML = [...set].sort().map(v => `<option value="${esc(v)}"></option>`).join('');
+  }
+}
+
+POCCON_FILTERS.forEach(([, id]) => document.getElementById(id).addEventListener('input', onPocConFilterChange));
 document.getElementById('btn-con-poc-clear-filter').addEventListener('click', () => {
-  document.getElementById('con-poc-filter-vf').value = '';
+  POCCON_FILTERS.forEach(([, id]) => { document.getElementById(id).value = ''; });
   onPocConFilterChange();
 });
 
 function onPocConFilterChange() {
   if (!_allRowsPocCon) return;
+  populatePocConFilter(_allRowsPocCon);
   renderPocConSummary(getPocConFilteredGroups());
 }
 
 function getPocConFilteredGroups() {
   if (!_allRowsPocCon) return new Map();
-  const vf = document.getElementById('con-poc-filter-vf').value.trim().toLowerCase();
-  const filtered = _allRowsPocCon.filter(r => !vf || String(r.vfInvoice ?? '').toLowerCase().includes(vf));
+  const filtered = _allRowsPocCon.filter(r => pocConRowMatches(r, null));
   const groups = new Map();
   for (const row of filtered) {
     if (!groups.has(row.contractor)) groups.set(row.contractor, []);
@@ -990,14 +1015,32 @@ function extractTxRxRows() {
   return rows;
 }
 
+// Filter fields: [row key, input id]. Each dropdown lists only the values found
+// in rows matching the OTHER filters, so picking a VF Invoice # narrows the
+// Contractor Invoice # list to that invoice (and vice versa).
+const TXRX_FILTERS = [
+  ['vfInvoice',  'contxrx-filter-vf'],
+  ['contractor', 'contxrx-filter-contractor'],
+  ['conInvoice', 'contxrx-filter-coninv'],
+];
+
+function txRxRowMatches(r, skipKey) {
+  for (const [key, id] of TXRX_FILTERS) {
+    if (key === skipKey) continue;
+    const q = document.getElementById(id).value.trim().toLowerCase();
+    if (q && !String(r[key] ?? '').toLowerCase().includes(q)) return false;
+  }
+  return true;
+}
+
 function populateTxRxFilter(rows) {
   const vfSet     = new Set();
   const conSet    = new Set();
   const conInvSet = new Set();
   rows.forEach(r => {
-    if (r.vfInvoice)  vfSet.add(r.vfInvoice);
-    if (r.contractor) conSet.add(r.contractor);
-    if (r.conInvoice) conInvSet.add(r.conInvoice);
+    if (r.vfInvoice  && txRxRowMatches(r, 'vfInvoice'))  vfSet.add(r.vfInvoice);
+    if (r.contractor && txRxRowMatches(r, 'contractor')) conSet.add(r.contractor);
+    if (r.conInvoice && txRxRowMatches(r, 'conInvoice')) conInvSet.add(r.conInvoice);
   });
   const dlVf     = document.getElementById('contxrx-filter-vf-list');
   const dlCon    = document.getElementById('contxrx-filter-contractor-list');
@@ -1019,20 +1062,13 @@ document.getElementById('btn-contxrx-clear-filter').addEventListener('click', ()
 
 function onTxRxFilterChange() {
   if (!_allRowsTxRx) return;
+  populateTxRxFilter(_allRowsTxRx);
   renderTxRxSummary(getTxRxFilteredGroups());
 }
 
 function getTxRxFilteredGroups() {
   if (!_allRowsTxRx) return new Map();
-  const vf  = document.getElementById('contxrx-filter-vf').value.trim().toLowerCase();
-  const con = document.getElementById('contxrx-filter-contractor').value.trim().toLowerCase();
-  const inv = document.getElementById('contxrx-filter-coninv').value.trim().toLowerCase();
-  const filtered = _allRowsTxRx.filter(r => {
-    if (vf  && !String(r.vfInvoice  ?? '').toLowerCase().includes(vf))  return false;
-    if (con && !String(r.contractor ?? '').toLowerCase().includes(con)) return false;
-    if (inv && !String(r.conInvoice ?? '').toLowerCase().includes(inv)) return false;
-    return true;
-  });
+  const filtered = _allRowsTxRx.filter(r => txRxRowMatches(r, null));
   const groups = new Map();
   for (const row of filtered) {
     if (!groups.has(row.contractor)) groups.set(row.contractor, []);
