@@ -13,6 +13,7 @@ let _tsrWorkbook  = null;
 let _folderFiles  = [];
 let _MsgReader    = null;   // cached @kenjiuno/msgreader
 let _pdfJs        = null;   // cached PDF.js (pdfjsLib global)
+let _trackingRows = null;   // master tracking rows with a Distance (optional)
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -57,17 +58,175 @@ function normalizeFolderNumber(v) {
   return m ? parseInt(m[1], 10) : null;
 }
 
-// Extract catalogue-code prefix for item matching: "EX06 - ..." → "EX06"
+// Codes renamed between the old and new price lists — the same task, so they
+// compare as one (same table as TSR Sub Order). Key = alternative code,
+// value = the code it is treated as.
+const ITEM_ALIASES = {
+  DS07: 'DS09'   // "DS07 - Dismantle & Return Microwave Link or Dish" = "DS09 - Dismantle & Return Microwave Link"
+};
+
+// Items merged by description between the old and new price lists — checked
+// before the code, because a merged item's new code may be reused or missing.
+const isMacro = t => /macro\s*\/\s*mega\s+site/.test(t);
+const hasFive = t => /\bfive\b|\(5\)/.test(t);
+const ITEM_GROUPS = [
+  { key: 'RF-MACRO-5PLUS', test: t => isMacro(t) && hasFive(t) },
+  { key: 'RF-MACRO-UPTO4', test: t => isMacro(t) && /\b(three|four)\b|\([34]\)/.test(t) }
+];
+function itemGroupKey(desc) {
+  const t = normalizeLower(desc);
+  const g = ITEM_GROUPS.find(g => g.test(t));
+  return g ? g.key : null;
+}
+function aliasCode(code) { return ITEM_ALIASES[code] || code; }
+
+// Extract catalogue-code prefix for item matching: "EX06 - ..." → "EX06".
+// Merged items resolve to their ITEM_GROUPS key and renamed codes go through
+// ITEM_ALIASES ("DS07" → "DS09"), so old and new price-list names match.
 function itemMatchKey(desc) {
+  const group = itemGroupKey(desc);
+  if (group) return group;
   const s = normalizeStr(desc);
   const m = s.match(/^([A-Za-z]{1,4}\d{1,3})\b/);
-  return m ? m[1].toUpperCase() : normalizeLower(s);
+  return m ? aliasCode(m[1].toUpperCase()) : normalizeLower(s);
 }
 
 // Normalise an activity code so all punctuation variants map to the same key:
 // "EX.01" → "EX01",  "EX-01" → "EX01",  "EX 01" → "EX01",  "EX01" → "EX01"
 function normalizeActivityCode(code) {
   return String(code || '').replace(/[\s.\-_]/g, '').toUpperCase();
+}
+
+// Comparable key of a PDF row: merged-item group from its description, else
+// its activity code with renamed codes aliased ("DS.07" → "DS09").
+function pdfItemKey(r) {
+  return itemGroupKey(r.item) || aliasCode(normalizeActivityCode(r.request));
+}
+
+// Distance band → quantity multiplier: "400km - 800km" → 1.2
+const DISTANCE_MULTIPLIERS = {
+  '0km-100km':   1.0,
+  '100km-400km': 1.1,
+  '400km-800km': 1.2,
+  '>800km':      1.25
+};
+function distanceFactor(raw) {
+  const k = normalizeLower(raw).replace(/\s+/g, '');
+  return DISTANCE_MULTIPLIERS[k] ?? 1.0;
+}
+function toNumber(v) {
+  if (typeof v === 'number') return v;
+  const n = parseFloat(String(v ?? '').replace(/[,\s]/g, ''));
+  return isNaN(n) ? 0 : n;
+}
+function fmtQty(n) {
+  return (Math.round(n * 100) / 100).toLocaleString('en-US', { maximumFractionDigits: 2 });
+}
+
+// Site ID key: "U3844" → "U3844", 3688 → "3688", "0568" → "568"
+function siteKey(v) {
+  if (v == null || v === '') return '';
+  if (typeof v === 'number') return String(Math.round(v));
+  const s = String(v).toUpperCase().replace(/\s+/g, '').replace(/\.0+$/, '');
+  return /^\d+$/.test(s) ? String(parseInt(s, 10)) : s;
+}
+const isBlankVal = v => { const s = normalizeLower(v); return !s || s === 'na' || s === 'n/a' || s === '-'; };
+
+// Master tracking "Invoicing Track" → rows that carry a Distance
+function readTrackingDistances(wb) {
+  const name = wb.SheetNames.find(n => n.trim().toLowerCase() === 'invoicing track');
+  if (!name) throw new Error('sheet "Invoicing Track" not found. Available: ' + wb.SheetNames.join(', '));
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: null });
+  let hdr = -1;
+  for (let i = 0; i < Math.min(rows.length, 30) && hdr < 0; i++) {
+    const h = (rows[i] || []).map(c => normalizeLower(c instanceof Date ? '' : c));
+    if (h.some(t => t.includes('logical site')) && h.some(t => t.includes('distance'))) hdr = i;
+  }
+  if (hdr < 0) throw new Error('no header row with both "Logical Site ID" and "Distance" in the first 30 rows.');
+  const h = (rows[hdr] || []).map(c => normalizeLower(c instanceof Date ? '' : c));
+  const find = test => h.findIndex(test);
+  const c = {
+    site:     find(t => t.includes('logical site')),
+    facing:   find(t => t.includes('facing')),
+    item:     find(t => t === 'line item' || t === 'line items'),
+    cert:     find(t => t.includes('certificate')),
+    distance: find(t => t.includes('distance')),
+    status:   find(t => t === 'status')
+  };
+  const out = [];
+  for (let i = hdr + 1; i < rows.length; i++) {
+    const row = rows[i] || [];
+    const distance = normalizeStr(row[c.distance]);
+    const site     = siteKey(row[c.site]);
+    if (!site || isBlankVal(distance)) continue;
+    if (c.status >= 0 && normalizeLower(row[c.status]) === 'cancelled') continue;
+    out.push({
+      excelRow: i + 1, site, distance,
+      facing: c.facing >= 0 && !isBlankVal(row[c.facing]) ? siteKey(row[c.facing]) : '',
+      item:   c.item   >= 0 ? itemMatchKey(row[c.item]) : '',
+      cert:   c.cert   >= 0 && !isBlankVal(row[c.cert]) ? normalizeLower(row[c.cert]) : ''
+    });
+  }
+  return out;
+}
+
+// Distance for a TSR row whose Distance cell is blank, from the master tracking.
+// Tries the most specific match first; a level is used only if every tracking
+// row at that level agrees on the distance.
+function lookupTrackingDistance(r) {
+  if (!_trackingRows) return null;
+  const site = siteKey(r.siteId), facing = isBlankVal(r.facing) ? '' : siteKey(r.facing);
+  const item = itemMatchKey(r.itemDesc), cert = isBlankVal(r.cert) ? '' : normalizeLower(r.cert);
+  const same = _trackingRows.filter(t => t.site === site);
+  const levels = [
+    ['Site + Item + Certificate #', t => cert && t.cert === cert && t.item === item],
+    ['Site + Facing + Item',        t => facing && t.facing === facing && t.item === item],
+    ['Site + Item',                 t => t.item === item],
+    ['Site + Certificate #',        t => cert && t.cert === cert],
+    ['Site + Facing',               t => facing && t.facing === facing],
+    ['Site',                        () => true]
+  ];
+  for (const [label, test] of levels) {
+    const hits = same.filter(test);
+    if (!hits.length) continue;
+    const bands = [...new Set(hits.map(t => normalizeLower(t.distance).replace(/\s+/g, '')))];
+    if (bands.length === 1) {
+      return { distance: hits[0].distance, source: 'Tracking (' + label + ', row ' + hits[0].excelRow + ')' };
+    }
+  }
+  return null;
+}
+
+// TSR "Request Form - VF" → Map(item key → { desc, remaining }) or an error text
+function readRequestForm(wb) {
+  const ws = wb.Sheets['Request Form - VF'];
+  if (!ws) return { error: 'Sheet "Request Form - VF" not found in the TSR file.' };
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+  let hdr = -1;
+  for (let i = 0; i < rows.length && hdr < 0; i++) {
+    if ((rows[i] || []).some(c => c && !(c instanceof Date) &&
+        c.toString().toLowerCase().includes('item description'))) hdr = i;
+  }
+  if (hdr < 0) return { error: '"Request Form - VF": could not find the "Item Description" header row.' };
+  let cItem = -1, cRem = -1;
+  (rows[hdr] || []).forEach((cell, c) => {
+    if (cell == null || cell instanceof Date) return;
+    const t = cell.toString().toLowerCase();
+    if (cItem < 0 && t.includes('item description'))                  cItem = c;
+    if (cRem  < 0 && t.includes('remaining') && !t.includes('after')) cRem  = c;
+  });
+  if (cRem < 0) return { error: '"Request Form - VF": no "Remaining" column in header row ' + (hdr + 1) + '.' };
+  const items = new Map();
+  for (let i = hdr + 1; i < rows.length; i++) {
+    const row  = rows[i] || [];
+    const desc = normalizeStr(row[cItem]);
+    if (!desc) continue;
+    const key = itemMatchKey(desc);
+    const cur = items.get(key) || { desc, remaining: 0 };
+    cur.remaining += toNumber(row[cRem]);
+    items.set(key, cur);
+  }
+  return { items, colItem: cItem, colRem: cRem, headerRow: hdr + 1 };
 }
 
 // Split a Site ID cell into its atomic tokens.
@@ -423,6 +582,32 @@ el('tsrval-input-tsr').addEventListener('change', async (e) => {
 });
 
 // ---------------------------------------------------------------------------
+// File Picking — Master Tracking (optional, fills blank Distance)
+// ---------------------------------------------------------------------------
+el('tsrval-btn-trk').addEventListener('click', () => el('tsrval-input-trk').click());
+
+el('tsrval-input-trk').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  clearError();
+  showProgress('tsrval-trk-progress', true);
+  el('tsrval-trk-filename').textContent = 'Reading…';
+  try {
+    const data = await file.arrayBuffer();
+    _trackingRows = readTrackingDistances(XLSX.read(data, { type: 'array', cellDates: true }));
+    el('tsrval-trk-filename').textContent =
+      file.name + ' (' + _trackingRows.length + ' rows with a Distance)';
+    el('tsrval-card-trk').classList.add('loaded');
+  } catch (err) {
+    showError('Failed to read tracking file: ' + err.message);
+    _trackingRows = null;
+    el('tsrval-trk-filename').textContent = 'Fills blank Distance for the quantity check';
+    el('tsrval-card-trk').classList.remove('loaded');
+  }
+  showProgress('tsrval-trk-progress', false);
+});
+
+// ---------------------------------------------------------------------------
 // File Picking — TSR Mails Folder
 // ---------------------------------------------------------------------------
 el('tsrval-btn-folder').addEventListener('click', () => el('tsrval-input-folder').click());
@@ -512,11 +697,16 @@ async function runValidation() {
   // Detect columns
   let colSiteId = -1, colFacing = -1, colItemDesc = -1, colCert = -1;
   let colSub = -1, colComments = -1, colConStatus = -1;
+  let colDistance = -1, colQty = -1, colPrice = -1, colTotal = -1;
 
   for (let c = 0; c < tsrHeader.length; c++) {
     const raw = tsrHeader[c];
     if (raw == null || raw instanceof Date) continue;
     const h = raw.toString().trim().toLowerCase();
+    if (colDistance  < 0 && h.includes('distance'))                                          colDistance  = c;
+    if (colQty       < 0 && (h === 'qty' || h === 'quantity' || h === 'qty.'))               colQty       = c;
+    if (colPrice     < 0 && h.includes('unit price'))                                        colPrice     = c;
+    if (colTotal     < 0 && h.includes('total value'))                                       colTotal     = c;
     if (colSiteId    < 0 && (h === 'site id' || h === 'site_id' || h.includes('site id')))  colSiteId    = c;
     if (colFacing    < 0 && h.includes('facing'))                                            colFacing    = c;
     if (colItemDesc  < 0 && h.includes('item description'))                                  colItemDesc  = c;
@@ -545,7 +735,9 @@ async function runValidation() {
     'Cert #: '      + colIndexToLetter(colCert),
     'Con.Status: '  + colIndexToLetter(colConStatus),
     'Sub #: '       + colIndexToLetter(colSub),
-    'Comments: '    + colIndexToLetter(colComments)
+    'Comments: '    + colIndexToLetter(colComments),
+    'Distance: '    + (colDistance >= 0 ? colIndexToLetter(colDistance) : 'not found'),
+    'Qty: '         + (colQty      >= 0 ? colIndexToLetter(colQty)      : 'not found')
   ].join(' | ');
 
   // ── 2. Filter rows for this submission ─────────────────────────────────────
@@ -562,12 +754,44 @@ async function runValidation() {
     // Folder key is the plain folder number in the comment, for FAC and TOC rows alike
     const folderKey = normalizeFolderNumber(rawComment);
 
+    const qty      = colQty      >= 0 ? toNumber(row[colQty]) : 0;
+    const base = {
+      siteId:   normalizeStr(row[colSiteId]),
+      facing:   normalizeStr(row[colFacing]),
+      itemDesc: normalizeStr(row[colItemDesc]),
+      cert:     normalizeStr(row[colCert])
+    };
+
+    // Distance: PO Break Down cell → master tracking → Total Value ÷ Unit Price
+    let distance = colDistance >= 0 ? normalizeStr(row[colDistance]) : '';
+    let factor = 1.0, distSource = 'PO Break Down';
+    if (!isBlankVal(distance)) {
+      factor = distanceFactor(distance);
+    } else {
+      distance = '';
+      const trk = lookupTrackingDistance(base);
+      if (trk) {
+        distance = trk.distance; factor = distanceFactor(trk.distance); distSource = trk.source;
+      } else {
+        const price = colPrice >= 0 ? toNumber(row[colPrice]) : 0;
+        const total = colTotal >= 0 ? toNumber(row[colTotal]) : 0;
+        const ratio = price && qty ? total / (price * qty) : 0;
+        const band  = Object.entries(DISTANCE_MULTIPLIERS).find(([, f]) => Math.abs(f - ratio) < 0.005);
+        if (band) {
+          factor = band[1]; distSource = 'Total Value ÷ (Unit Price × Qty) = ' + band[1];
+        } else {
+          distSource = 'Not found — factor 1.0 used' +
+            (_trackingRows ? '' : ' (upload the master tracking to look it up)');
+        }
+      }
+    }
+
     filteredRows.push({
       tsrExcelRow: i + 1,
-      siteId:      normalizeStr(row[colSiteId]),
-      facing:      normalizeStr(row[colFacing]),
-      itemDesc:    normalizeStr(row[colItemDesc]),
-      cert:        normalizeStr(row[colCert]),
+      ...base,
+      qty, distance, factor, distSource,
+      distMissing: colDistance < 0 || distSource !== 'PO Break Down',
+      actualQty:   qty * factor,
       isToc,
       folderKey,
       rawComment
@@ -767,7 +991,7 @@ async function runValidation() {
         for (const r of dataRows) {
           const m = siteMatchLevel(tsrRow, r);
           if (!m.level) continue;
-          const codeOk = normalizeActivityCode(r.request) === codeKey;
+          const codeOk = pdfItemKey(r) === codeKey;
           // Activity code is the primary check: a code match outranks a better
           // site level, so the row is paired with the line it is really about.
           const score  = (codeOk ? 100 : 0) + m.level;
@@ -889,8 +1113,52 @@ async function runValidation() {
     });
   }
 
-  // ── 6. Render ──────────────────────────────────────────────────────────────
-  renderResults(subNum, filteredRows.length, folderResults, colInfo);
+  // ── 6. Quantity check ──────────────────────────────────────────────────────
+  // Actual qty sent per item (PO Break Down Qty × distance factor), summed for
+  // this submission, must fit in the item's Remaining qty on "Request Form - VF".
+  const qtyCheck = buildQtyCheck(filteredRows, colQty, colDistance);
+
+  // ── 7. Render ──────────────────────────────────────────────────────────────
+  renderResults(subNum, filteredRows.length, folderResults, colInfo, qtyCheck);
+}
+
+function buildQtyCheck(rows, colQty, colDistance) {
+  if (colQty < 0) return { error: 'No "Qty" column found in "PO Break Down- Contractor & Acc" — quantity check skipped.' };
+  const form = readRequestForm(_tsrWorkbook);
+  if (form.error) return { error: form.error + ' Quantity check skipped.' };
+
+  const byItem = new Map();   // item key → summary
+  for (const r of rows) {
+    const key = itemMatchKey(r.itemDesc);
+    if (!byItem.has(key)) byItem.set(key, { key, desc: r.itemDesc, rows: [], sent: 0 });
+    const it = byItem.get(key);
+    it.rows.push(r);
+    it.sent += r.actualQty;
+  }
+  const items = [...byItem.values()].map(it => {
+    const f = form.items.get(it.key);
+    const remaining = f ? f.remaining : null;
+    const balance   = f ? remaining - it.sent : null;
+    let status = 'pass', issue = '';
+    if (!f) {
+      status = 'fail'; issue = 'Item not found on "Request Form - VF"';
+    } else if (balance < -1e-6) {
+      status = 'fail'; issue = 'Exceeds remaining by ' + fmtQty(-balance);
+    }
+    const unknown = it.rows.filter(r => r.distMissing && !r.distance && !/^Total Value/.test(r.distSource)).length;
+    if (unknown) issue = (issue ? issue + ' · ' : '') +
+      unknown + ' row' + (unknown > 1 ? 's' : '') + ' with unknown distance (factor 1.0 used)';
+    return { ...it, formDesc: f ? f.desc : '', remaining, balance, status, issue };
+  });
+  return {
+    items,
+    distRows: rows.filter(r => r.distMissing),
+    note: 'Request Form - VF: header row ' + form.headerRow +
+          ', Remaining column ' + colIndexToLetter(form.colRem) +
+          (colDistance < 0 ? ' | No Distance column on PO Break Down — every row looked up' : '') +
+          (_trackingRows ? ' | Master tracking loaded (' + _trackingRows.length + ' rows with a Distance)'
+                         : ' | Master tracking not loaded')
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -904,11 +1172,86 @@ el('tsrval-folder-results').addEventListener('click', e => {
     .forEach(d => { d.open = open; });
 });
 
-function renderResults(subNum, totalRows, folderResults, colInfo) {
+function renderQtyCheck(qc) {
+  if (qc.error) return `<div class="tsrval-global-error">&#9888; ${escHtml(qc.error)}</div>`;
+  const failN = qc.items.filter(i => i.status !== 'pass').length;
+  const ok    = failN === 0;
+  let html = `
+    <details class="tsrval-folder-section tsrval-qty-section${ok ? ' tsrval-folder-ok' : ' tsrval-folder-fail'}"${ok ? '' : ' open'}>
+      <summary class="tsrval-folder-header">
+        <span class="tsrval-folder-title">&#128202; Quantity Check &mdash; <em>Request Form - VF remaining</em></span>
+        <span class="tsrval-folder-count">${qc.items.length} item${qc.items.length !== 1 ? 's' : ''}</span>
+        <span class="tsrval-folder-badge ${ok ? 'tsrval-badge-pass' : 'tsrval-badge-fail'}">
+          ${ok ? '&#10003; All Fit' : failN + ' issue' + (failN > 1 ? 's' : '')}
+        </span>
+      </summary>
+      <div class="tsrval-col-info">&#8505;&nbsp;Sent qty = Qty &times; distance factor (0&ndash;100 km 1.0, 100&ndash;400 km 1.1, 400&ndash;800 km 1.2, &gt; 800 km 1.25), summed per item. ${escHtml(qc.note)}</div>
+      <div class="table-wrapper">
+        <table class="tsrval-table">
+          <thead><tr>
+            <th>#</th><th>Item Description</th><th>Rows</th><th>Qty</th>
+            <th>Sent (Actual) Qty</th><th>Remaining</th><th>Balance</th><th>Status</th><th>Issues</th>
+          </tr></thead>
+          <tbody>`;
+  qc.items.forEach((it, i) => {
+    const rawQty = it.rows.reduce((s, r) => s + r.qty, 0);
+    const badge  = it.status === 'pass'
+      ? '<span class="tsrval-badge tsrval-badge-pass">&#10003; Pass</span>'
+      : '<span class="tsrval-badge tsrval-badge-fail">&#10007; Fail</span>';
+    const nameNote = it.formDesc && it.formDesc !== it.desc
+      ? `<div class="tsrval-issue-item" style="color:#666">Request Form: ${escHtml(it.formDesc)}</div>` : '';
+    html += `
+            <tr class="${it.status === 'pass' ? 'tsrval-row-pass' : 'tsrval-row-fail'}">
+              <td style="text-align:center">${i + 1}</td>
+              <td class="tsrval-item-col">${escHtml(it.desc)}${nameNote}</td>
+              <td style="text-align:center" title="TSR rows ${it.rows.map(r => r.tsrExcelRow).join(', ')}">${it.rows.length}</td>
+              <td style="text-align:right">${fmtQty(rawQty)}</td>
+              <td style="text-align:right"><strong>${fmtQty(it.sent)}</strong></td>
+              <td style="text-align:right">${it.remaining == null ? '&mdash;' : fmtQty(it.remaining)}</td>
+              <td style="text-align:right">${it.balance == null ? '&mdash;' : fmtQty(it.balance)}</td>
+              <td style="text-align:center">${badge}</td>
+              <td class="tsrval-issues-col">${it.issue ? `<div class="tsrval-issue-item">&bull; ${escHtml(it.issue)}</div>` : ''}</td>
+            </tr>`;
+  });
+  html += '</tbody></table></div>';
+
+  // Rows whose Distance was blank on PO Break Down — where the factor came from
+  if (qc.distRows.length) {
+    html += `
+      <div class="tsrval-col-info" style="margin-top:0.75rem">&#8505;&nbsp;${qc.distRows.length} row${qc.distRows.length !== 1 ? 's have' : ' has'} no Distance on PO Break Down &mdash; filled as below.</div>
+      <div class="table-wrapper">
+        <table class="tsrval-table">
+          <thead><tr>
+            <th>TSR Row</th><th>Site ID</th><th>Facing #</th><th>Item Description</th>
+            <th>Qty</th><th>Distance used</th><th>Factor</th><th>Actual Qty</th><th>Source</th>
+          </tr></thead>
+          <tbody>`;
+    for (const r of qc.distRows) {
+      const unknown = /^Not found/.test(r.distSource);
+      html += `
+            <tr class="${unknown ? 'tsrval-row-fail' : 'tsrval-row-pass'}">
+              <td style="text-align:center">${r.tsrExcelRow}</td>
+              <td>${escHtml(r.siteId)}</td>
+              <td>${escHtml(r.facing)}</td>
+              <td class="tsrval-item-col">${escHtml(r.itemDesc)}</td>
+              <td style="text-align:right">${fmtQty(r.qty)}</td>
+              <td>${r.distance ? escHtml(r.distance) : '&mdash;'}</td>
+              <td style="text-align:right">${r.factor}</td>
+              <td style="text-align:right">${fmtQty(r.actualQty)}</td>
+              <td class="tsrval-issues-col">${escHtml(r.distSource)}</td>
+            </tr>`;
+    }
+    html += '</tbody></table></div>';
+  }
+  return html + '</details>';
+}
+
+function renderResults(subNum, totalRows, folderResults, colInfo, qtyCheck) {
   const allRows   = folderResults.flatMap(f => f.rows);
   const passCount = allRows.filter(r => r.status === 'pass').length;
   const failCount = allRows.filter(r => r.status !== 'pass').length;
-  const allOk     = failCount === 0;
+  const qtyFail   = qtyCheck && qtyCheck.items ? qtyCheck.items.filter(i => i.status !== 'pass').length : 0;
+  const allOk     = failCount === 0 && qtyFail === 0;
 
   const summaryHtml = `
     <div class="tsrval-col-info">&#8505;&nbsp;${escHtml(colInfo)}</div>
@@ -932,9 +1275,12 @@ function renderResults(subNum, totalRows, folderResults, colInfo) {
     </div>
     ${allOk
       ? '<div class="tsrval-all-ok">&#10003; All rows validated successfully.</div>'
-      : '<div class="tsrval-has-errors">&#9888; ' + failCount + ' issue' + (failCount > 1 ? 's' : '') +
+      : '<div class="tsrval-has-errors">&#9888; ' +
+        [failCount ? failCount + ' row issue' + (failCount > 1 ? 's' : '') : '',
+         qtyFail ? qtyFail + ' quantity issue' + (qtyFail > 1 ? 's' : '') : ''].filter(Boolean).join(' and ') +
         ' found — review the details below before submitting.</div>'
-    }`;
+    }
+    ${qtyCheck ? renderQtyCheck(qtyCheck) : ''}`;
 
   let foldersHtml = '';
   for (const folder of folderResults) {

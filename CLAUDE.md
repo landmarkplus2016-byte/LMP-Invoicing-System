@@ -187,6 +187,7 @@ Validates a TSR submission by comparing it against Excel or PDF attachments extr
 - **TSR File upload** — the `.xlsb` TSR file (sheet `PO Break Down- Contractor & Acc`)
 - **TSR Mails Folder upload** — a folder whose sub-folders are numbered (1, 2, 3…) — FAC and TOC folders alike. Each sub-folder contains an email (`.msg` or `.eml`) whose attachment is the reference file, or a direct `.xlsx`/`.pdf` file.
 - **Submission Number** — integer typed by the user; filters TSR rows by the Submission # column
+- **Master Tracking (optional)** — only used to fill blank Distance values for the quantity check
 
 Both file inputs show an animated progress bar while loading. Results show a grey diagnostic strip listing the detected column letters for each field.
 
@@ -230,7 +231,7 @@ The validation path is chosen by the **attachment type actually found** (`folder
 
 **Excel attachments (regular numbered folders):**
 - Key: `Site ID + Facing # + itemMatchKey(Item Description)`
-- `itemMatchKey()` extracts the catalogue code prefix: `"EX06 - S&I of …"` → `"EX06"`. This makes matching prefix-invariant so minor description wording/punctuation differences don't cause failures.
+- `itemMatchKey()` extracts the catalogue code prefix: `"EX06 - S&I of …"` → `"EX06"`. This makes matching prefix-invariant so minor description wording/punctuation differences don't cause failures. Renamed codes go through the same `ITEM_ALIASES` table as TSR Sub Order (`DS07` → `DS09`) and merged RF items through `ITEM_GROUPS`, so a TSR written with the new price-list name still matches a mail that kept the old one. PDF rows compare via `pdfItemKey()` (group from the description, else the aliased activity code).
 - **One-to-one pairing (`excelPair`)** — the same Site + Facing + item can appear several times in one mail (a hub site's `TX16` for several links, each with its own Request #), so every TSR row is paired with its own mail row before any check, in four passes over the group: (1) same Site + Facing + item **and** Request # = Certificate #, (2) same Site + Facing + item, (3) same Site + item with Request # = Certificate # (Facing differs), (4) same Site + item. Each mail row is used once. Passes 1–2 are a full match; passes 3–4 report a Facing mismatch.
   - Before this, only the first mail row per key was kept, so all repeats of `H3153 / TX16` mapped to one position — giving false Certificate # mismatches and a cascade of false order errors.
 - After matching: Certificate # (TSR) is validated against Request # (Excel). This is the only additional field check — Site/Facing/Item were already used as the key.
@@ -285,6 +286,14 @@ This ensures **both rows in every swap are flagged**, not just the second one. U
    - anything else (Quantity, Area…) → `null` (ignored)
 5. For each data row cell, finds nearest header by x-distance and assigns to that column's key
 6. Returns array of `{ pos, request, siteId, facing, item }`
+
+### Quantity Check (`buildQtyCheck`)
+
+For the submission's rows on `PO Break Down- Contractor & Acc`, **sent qty = `Qty` × distance factor** (`Distance` column: 0–100 km 1.0, 100–400 km 1.1, 400–800 km 1.2, > 800 km 1.25), summed per item (`itemMatchKey`, so DS07/DS09 sum together). Each item total must be ≤ the item's **Remaining** on `Request Form - VF` (`readRequestForm`: header row found by "item description", Remaining = first header containing `remaining` but not `after`). An item over its remaining, or missing from the Request Form, fails. Shown as a collapsible **Quantity Check** section under the summary banner (Qty, Sent, Remaining, Balance per item) and counted in the banner; it does not change the per-row Pass/Fail counts. If the `Qty` column or the sheet/Remaining column is missing, the check is skipped with a notice.
+
+Remaining on the Request Form is **before** the current submission, so the rule is sent ≤ Remaining.
+
+**Blank Distance** on PO Break Down is filled in this order: (1) the optional **Master Tracking** upload (`#tsrval-input-trk`, sheet `Invoicing Track`, read by `readTrackingDistances`) via `lookupTrackingDistance` — matched by Site ID, trying Site + Item + Certificate # → Site + Facing + Item → Site + Item → Site + Certificate # → Site + Facing → Site, and a level is used only when all its tracking rows agree on one band; (2) `Total Value ÷ (Unit Price × Qty)` when it equals a band factor; (3) factor 1.0, flagged as unknown. Every filled row is listed under the Quantity Check table with its source.
 
 ### Results Display
 
@@ -535,4 +544,4 @@ The `formatDate()` function remains in the codebase but is no longer used for Ex
 
 ## Service Worker Cache
 
-When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v24` → `lmp-invoicing-v25`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v40`.
+When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v24` → `lmp-invoicing-v25`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v45`.
