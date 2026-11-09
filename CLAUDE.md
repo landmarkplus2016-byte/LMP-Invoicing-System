@@ -55,6 +55,8 @@ The app uses a **sidebar + main content** layout (not a top header + tab bar):
 
 The tab-switching JS updates both the `.nav-item` active state and the `#page-title` text. At ≤768px the sidebar collapses to a 60px icon-only strip.
 
+Every panel's `<main>` (`.poc-main`, `.tsr-main`, `.contractor-main`) is centred with `max-width: 1600px`, so wide screens use the space beside the sidebar.
+
 ## Drag & Drop (all tabs)
 
 A single inline script in `index.html` makes every `.file-card` a drop target — no per-app code. A dropped file is put into the card's own `<input type="file">` via `DataTransfer` and a synthetic `change` event is dispatched, so each app's existing change handler (which reads `e.target.files`) loads it unchanged. It also adds a `.drop-hint` line to each card and toggles `.drag-over` while dragging. `dragover`/`drop` are cancelled on `window` so a missed drop doesn't navigate the browser to the file.
@@ -297,7 +299,6 @@ Remaining on the Request Form is **before** the current submission, so the rule 
 
 ### Results Display
 
-- The panel is wider than the other TSR tabs: `#panel-tsrval .tsr-main { max-width: 1600px }`.
 
 - Grey diagnostic strip showing detected column letters
 - Summary stat boxes: Submission #, Total Rows, Passed, Failed
@@ -546,4 +547,4 @@ The `formatDate()` function remains in the codebase but is no longer used for Ex
 
 ## Service Worker Cache
 
-When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v24` → `lmp-invoicing-v25`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v46`.
+When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v24` → `lmp-invoicing-v25`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v47`.
