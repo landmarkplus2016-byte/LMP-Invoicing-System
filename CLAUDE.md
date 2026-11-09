@@ -289,13 +289,15 @@ This ensures **both rows in every swap are flagged**, not just the second one. U
 
 ### Quantity Check (`buildQtyCheck`)
 
-For the submission's rows on `PO Break Down- Contractor & Acc`, **sent qty = `Qty` × distance factor** (`Distance` column: 0–100 km 1.0, 100–400 km 1.1, 400–800 km 1.2, > 800 km 1.25), summed per item (`itemMatchKey`, so DS07/DS09 sum together). Each item total must be ≤ the item's **Remaining** on `Request Form - VF` (`readRequestForm`: header row found by "item description", Remaining = first header containing `remaining` but not `after`). An item over its remaining, or missing from the Request Form, fails. Shown as a collapsible **Quantity Check** section under the summary banner (Qty, Sent, Remaining, Balance per item) and counted in the banner; it does not change the per-row Pass/Fail counts. If the `Qty` column or the sheet/Remaining column is missing, the check is skipped with a notice.
+For the submission's rows on `PO Break Down- Contractor & Acc`, **sent qty = `Qty` × distance factor** (`Distance` column: 0–100 km 1.0, 100–400 km 1.1, 400–800 km 1.2, > 800 km 1.25), summed per item (`itemMatchKey`, so DS07/DS09 sum together). Each item total must be ≤ the item's **Remaining** on `Request Form - VF` (`readRequestForm`: header row found by "item description", Remaining = first header containing `remaining` but not `after`; also reads `Qty` and `Unit Price`). An item over its remaining, or missing from the Request Form, fails. Shown as a collapsible **Quantity Check** section under the summary banner listing **every TSR item** in Request Form order — sent or not (lines with no TSR Qty and no Remaining are skipped unless sent) — with TSR Qty, Remaining, Rows, Qty, Sent (Actual), Balance (= Remaining − Sent), Unit Price, Sent Value, Balance Value, and a totals footer. Unsent items are grey with a **Not sent** badge; sent items missing from the Request Form are appended and fail and counted in the banner; it does not change the per-row Pass/Fail counts. If the `Qty` column or the sheet/Remaining column is missing, the check is skipped with a notice.
 
 Remaining on the Request Form is **before** the current submission, so the rule is sent ≤ Remaining.
 
 **Blank Distance** on PO Break Down is filled in this order: (1) the optional **Master Tracking** upload (`#tsrval-input-trk`, sheet `Invoicing Track`, read by `readTrackingDistances`) via `lookupTrackingDistance` — matched by Site ID, trying Site + Item + Certificate # → Site + Facing + Item → Site + Item → Site + Certificate # → Site + Facing → Site, and a level is used only when all its tracking rows agree on one band; (2) `Total Value ÷ (Unit Price × Qty)` when it equals a band factor; (3) factor 1.0, flagged as unknown. Every filled row is listed under the Quantity Check table with its source.
 
 ### Results Display
+
+- The panel is wider than the other TSR tabs: `#panel-tsrval .tsr-main { max-width: 1600px }`.
 
 - Grey diagnostic strip showing detected column letters
 - Summary stat boxes: Submission #, Total Rows, Passed, Failed
@@ -544,4 +546,4 @@ The `formatDate()` function remains in the codebase but is no longer used for Ex
 
 ## Service Worker Cache
 
-When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v24` → `lmp-invoicing-v25`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v45`.
+When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v24` → `lmp-invoicing-v25`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v46`.

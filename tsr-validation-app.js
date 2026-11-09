@@ -208,25 +208,29 @@ function readRequestForm(wb) {
         c.toString().toLowerCase().includes('item description'))) hdr = i;
   }
   if (hdr < 0) return { error: '"Request Form - VF": could not find the "Item Description" header row.' };
-  let cItem = -1, cRem = -1;
+  let cItem = -1, cRem = -1, cQty = -1, cPrice = -1;
   (rows[hdr] || []).forEach((cell, c) => {
     if (cell == null || cell instanceof Date) return;
-    const t = cell.toString().toLowerCase();
-    if (cItem < 0 && t.includes('item description'))                  cItem = c;
-    if (cRem  < 0 && t.includes('remaining') && !t.includes('after')) cRem  = c;
+    const t = cell.toString().trim().toLowerCase();
+    if (cItem  < 0 && t.includes('item description'))                  cItem  = c;
+    if (cRem   < 0 && t.includes('remaining') && !t.includes('after')) cRem   = c;
+    if (cQty   < 0 && (t === 'qty' || t === 'quantity'))               cQty   = c;
+    if (cPrice < 0 && t.includes('unit price'))                        cPrice = c;
   });
   if (cRem < 0) return { error: '"Request Form - VF": no "Remaining" column in header row ' + (hdr + 1) + '.' };
-  const items = new Map();
+  const items = new Map();   // item key → { desc, tsrQty, remaining, price }, in sheet order
   for (let i = hdr + 1; i < rows.length; i++) {
     const row  = rows[i] || [];
     const desc = normalizeStr(row[cItem]);
     if (!desc) continue;
     const key = itemMatchKey(desc);
-    const cur = items.get(key) || { desc, remaining: 0 };
+    const cur = items.get(key) || { desc, tsrQty: 0, remaining: 0, price: 0 };
     cur.remaining += toNumber(row[cRem]);
+    if (cQty   >= 0) cur.tsrQty += toNumber(row[cQty]);
+    if (cPrice >= 0 && !cur.price) cur.price = toNumber(row[cPrice]);
     items.set(key, cur);
   }
-  return { items, colItem: cItem, colRem: cRem, headerRow: hdr + 1 };
+  return { items, colItem: cItem, colRem: cRem, colQty: cQty, colPrice: cPrice, headerRow: hdr + 1 };
 }
 
 // Split a Site ID cell into its atomic tokens.
@@ -1122,6 +1126,31 @@ async function runValidation() {
   renderResults(subNum, filteredRows.length, folderResults, colInfo, qtyCheck);
 }
 
+// One Quantity Check line: TSR item f (or null) + this submission's rows it (or undefined)
+function qtyLine(key, it, f) {
+  const sentRows  = it ? it.rows : [];
+  const sent      = it ? it.sent : 0;
+  const remaining = f ? f.remaining : null;
+  const balance   = f ? remaining - sent : null;
+  const price     = f ? f.price : 0;
+  let status = it ? 'pass' : 'idle', issue = '';
+  if (it && !f) {
+    status = 'fail'; issue = 'Item not found on "Request Form - VF"';
+  } else if (it && balance < -1e-6) {
+    status = 'fail'; issue = 'Exceeds remaining by ' + fmtQty(-balance);
+  }
+  const unknown = sentRows.filter(r => r.distMissing && !r.distance && !/^Total Value/.test(r.distSource)).length;
+  if (unknown) issue = (issue ? issue + ' · ' : '') +
+    unknown + ' row' + (unknown > 1 ? 's' : '') + ' with unknown distance (factor 1.0 used)';
+  return {
+    key, desc: it ? it.desc : f.desc, formDesc: f ? f.desc : '',
+    rows: sentRows, rawQty: sentRows.reduce((s, r) => s + r.qty, 0), sent,
+    tsrQty: f ? f.tsrQty : null, remaining, balance, price,
+    sentValue: sent * price, balanceValue: balance == null ? null : balance * price,
+    status, issue
+  };
+}
+
 function buildQtyCheck(rows, colQty, colDistance) {
   if (colQty < 0) return { error: 'No "Qty" column found in "PO Break Down- Contractor & Acc" — quantity check skipped.' };
   const form = readRequestForm(_tsrWorkbook);
@@ -1135,26 +1164,23 @@ function buildQtyCheck(rows, colQty, colDistance) {
     it.rows.push(r);
     it.sent += r.actualQty;
   }
-  const items = [...byItem.values()].map(it => {
-    const f = form.items.get(it.key);
-    const remaining = f ? f.remaining : null;
-    const balance   = f ? remaining - it.sent : null;
-    let status = 'pass', issue = '';
-    if (!f) {
-      status = 'fail'; issue = 'Item not found on "Request Form - VF"';
-    } else if (balance < -1e-6) {
-      status = 'fail'; issue = 'Exceeds remaining by ' + fmtQty(-balance);
-    }
-    const unknown = it.rows.filter(r => r.distMissing && !r.distance && !/^Total Value/.test(r.distSource)).length;
-    if (unknown) issue = (issue ? issue + ' · ' : '') +
-      unknown + ' row' + (unknown > 1 ? 's' : '') + ' with unknown distance (factor 1.0 used)';
-    return { ...it, formDesc: f ? f.desc : '', remaining, balance, status, issue };
-  });
+  // Every TSR item in Request Form order (catalogue lines with no TSR qty and
+  // no remaining are skipped unless sent), then sent items missing from the form
+  const items = [];
+  for (const [key, f] of form.items) {
+    const it = byItem.get(key);
+    if (!it && !f.tsrQty && Math.abs(f.remaining) < 1e-9) continue;
+    items.push(qtyLine(key, it, f));
+  }
+  for (const [key, it] of byItem) if (!form.items.has(key)) items.push(qtyLine(key, it, null));
+
   return {
     items,
     distRows: rows.filter(r => r.distMissing),
     note: 'Request Form - VF: header row ' + form.headerRow +
           ', Remaining column ' + colIndexToLetter(form.colRem) +
+          (form.colQty   >= 0 ? ', Qty column ' + colIndexToLetter(form.colQty) : ', no Qty column') +
+          (form.colPrice >= 0 ? ', Unit Price column ' + colIndexToLetter(form.colPrice) : ', no Unit Price column') +
           (colDistance < 0 ? ' | No Distance column on PO Break Down — every row looked up' : '') +
           (_trackingRows ? ' | Master tracking loaded (' + _trackingRows.length + ' rows with a Distance)'
                          : ' | Master tracking not loaded')
@@ -1172,48 +1198,74 @@ el('tsrval-folder-results').addEventListener('click', e => {
     .forEach(d => { d.open = open; });
 });
 
+function fmtMoney(n) {
+  return n == null ? '&mdash;'
+    : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 function renderQtyCheck(qc) {
   if (qc.error) return `<div class="tsrval-global-error">&#9888; ${escHtml(qc.error)}</div>`;
-  const failN = qc.items.filter(i => i.status !== 'pass').length;
+  const failN = qc.items.filter(i => i.status === 'fail').length;
+  const sentN = qc.items.filter(i => i.rows.length).length;
   const ok    = failN === 0;
+  const sum   = f => qc.items.reduce((s, i) => s + (i[f] || 0), 0);
+  const num   = (v, cls = '') => `<td class="tsrval-num${cls}">${v == null ? '&mdash;' : fmtQty(v)}</td>`;
   let html = `
     <details class="tsrval-folder-section tsrval-qty-section${ok ? ' tsrval-folder-ok' : ' tsrval-folder-fail'}"${ok ? '' : ' open'}>
       <summary class="tsrval-folder-header">
-        <span class="tsrval-folder-title">&#128202; Quantity Check &mdash; <em>Request Form - VF remaining</em></span>
-        <span class="tsrval-folder-count">${qc.items.length} item${qc.items.length !== 1 ? 's' : ''}</span>
+        <span class="tsrval-folder-title">&#128202; Quantity Check &mdash; <em>TSR balance after this submission</em></span>
+        <span class="tsrval-folder-count">${sentN} sent of ${qc.items.length} TSR item${qc.items.length !== 1 ? 's' : ''}</span>
         <span class="tsrval-folder-badge ${ok ? 'tsrval-badge-pass' : 'tsrval-badge-fail'}">
           ${ok ? '&#10003; All Fit' : failN + ' issue' + (failN > 1 ? 's' : '')}
         </span>
       </summary>
-      <div class="tsrval-col-info">&#8505;&nbsp;Sent qty = Qty &times; distance factor (0&ndash;100 km 1.0, 100&ndash;400 km 1.1, 400&ndash;800 km 1.2, &gt; 800 km 1.25), summed per item. ${escHtml(qc.note)}</div>
+      <div class="tsrval-col-info">&#8505;&nbsp;Sent qty = Qty &times; distance factor (0&ndash;100 km 1.0, 100&ndash;400 km 1.1, 400&ndash;800 km 1.2, &gt; 800 km 1.25), summed per item. Remaining is before this submission; Balance = Remaining &minus; Sent. ${escHtml(qc.note)}</div>
       <div class="table-wrapper">
-        <table class="tsrval-table">
+        <table class="tsrval-table tsrval-qty-table">
           <thead><tr>
-            <th>#</th><th>Item Description</th><th>Rows</th><th>Qty</th>
-            <th>Sent (Actual) Qty</th><th>Remaining</th><th>Balance</th><th>Status</th><th>Issues</th>
+            <th>#</th><th>Item Description</th><th>TSR Qty</th><th>Remaining</th>
+            <th>Rows</th><th>Qty</th><th>Sent (Actual)</th><th>Balance</th>
+            <th>Unit Price</th><th>Sent Value</th><th>Balance Value</th><th>Status</th><th>Issues</th>
           </tr></thead>
           <tbody>`;
   qc.items.forEach((it, i) => {
-    const rawQty = it.rows.reduce((s, r) => s + r.qty, 0);
-    const badge  = it.status === 'pass'
+    const badge = it.status === 'pass'
       ? '<span class="tsrval-badge tsrval-badge-pass">&#10003; Pass</span>'
-      : '<span class="tsrval-badge tsrval-badge-fail">&#10007; Fail</span>';
+      : it.status === 'fail'
+        ? '<span class="tsrval-badge tsrval-badge-fail">&#10007; Fail</span>'
+        : '<span class="tsrval-badge tsrval-badge-idle">Not sent</span>';
+    const rowCls = it.status === 'pass' ? 'tsrval-row-pass' : it.status === 'fail' ? 'tsrval-row-fail' : 'tsrval-row-idle';
     const nameNote = it.formDesc && it.formDesc !== it.desc
       ? `<div class="tsrval-issue-item" style="color:#666">Request Form: ${escHtml(it.formDesc)}</div>` : '';
+    const sent = it.rows.length > 0;
     html += `
-            <tr class="${it.status === 'pass' ? 'tsrval-row-pass' : 'tsrval-row-fail'}">
+            <tr class="${rowCls}">
               <td style="text-align:center">${i + 1}</td>
               <td class="tsrval-item-col">${escHtml(it.desc)}${nameNote}</td>
-              <td style="text-align:center" title="TSR rows ${it.rows.map(r => r.tsrExcelRow).join(', ')}">${it.rows.length}</td>
-              <td style="text-align:right">${fmtQty(rawQty)}</td>
-              <td style="text-align:right"><strong>${fmtQty(it.sent)}</strong></td>
-              <td style="text-align:right">${it.remaining == null ? '&mdash;' : fmtQty(it.remaining)}</td>
-              <td style="text-align:right">${it.balance == null ? '&mdash;' : fmtQty(it.balance)}</td>
+              ${num(it.tsrQty)}
+              ${num(it.remaining)}
+              <td style="text-align:center"${sent ? ` title="TSR rows ${it.rows.map(r => r.tsrExcelRow).join(', ')}"` : ''}>${sent ? it.rows.length : ''}</td>
+              <td class="tsrval-num">${sent ? fmtQty(it.rawQty) : ''}</td>
+              <td class="tsrval-num">${sent ? '<strong>' + fmtQty(it.sent) + '</strong>' : ''}</td>
+              ${num(it.balance, it.balance != null && it.balance < -1e-6 ? ' tsrval-neg' : '')}
+              <td class="tsrval-num">${it.price ? fmtMoney(it.price) : '&mdash;'}</td>
+              <td class="tsrval-num">${sent && it.price ? fmtMoney(it.sentValue) : ''}</td>
+              <td class="tsrval-num">${it.price ? fmtMoney(it.balanceValue) : '&mdash;'}</td>
               <td style="text-align:center">${badge}</td>
               <td class="tsrval-issues-col">${it.issue ? `<div class="tsrval-issue-item">&bull; ${escHtml(it.issue)}</div>` : ''}</td>
             </tr>`;
   });
-  html += '</tbody></table></div>';
+  html += `
+          </tbody>
+          <tfoot><tr>
+            <td></td><td>Total</td><td></td><td></td>
+            <td style="text-align:center">${qc.items.reduce((s, i) => s + i.rows.length, 0)}</td>
+            <td></td><td></td><td></td><td></td>
+            <td class="tsrval-num">${fmtMoney(sum('sentValue'))}</td>
+            <td class="tsrval-num">${fmtMoney(sum('balanceValue'))}</td>
+            <td></td><td></td>
+          </tr></tfoot>
+        </table></div>`;
 
   // Rows whose Distance was blank on PO Break Down — where the factor came from
   if (qc.distRows.length) {
