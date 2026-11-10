@@ -209,8 +209,16 @@ async function runPlan() {
                          (b.sub.startsWith(tag)) - (a.sub.startsWith(tag)));
     inTsr.set(cands[0], ex.subNo);
   }
-  const submitted = t => inTsr.has(t) || !!t.poStatus;
-  const otherTsr  = t => !submitted(t) && t.sub && !(tag && t.sub.startsWith(tag));
+  // For THIS TSR the loaded TSR file is the truth. PO status "ok" means "picked
+  // for a submission, not received yet": if the task is tagged with this TSR #
+  // ("1326", "1326 sub-2", "check 1326") or not tagged at all and it is not in
+  // the file, it has not been submitted here yet, so it stays available.
+  // "Received", "REJ", other PO statuses and other TSRs' tags still exclude it.
+  const tagRe     = tag ? new RegExp('(^|\\D)' + tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(\\D|$)') : null;
+  const myTagged  = t => !!tagRe && tagRe.test(t.sub);
+  const openOk    = t => /^ok$/i.test(t.poStatus) && (myTagged(t) || !t.sub);
+  const submitted = t => inTsr.has(t) || (!!t.poStatus && !openOk(t));
+  const otherTsr  = t => !submitted(t) && t.sub && !myTagged(t);
 
   // ── 2. Combos (Job Code + Site), FAC track only ──────────────────────────
   const tocTasks = [];

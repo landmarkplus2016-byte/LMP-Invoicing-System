@@ -158,7 +158,10 @@ function parseTrackingWeek(raw) {
     const re = /W\s*(\d{1,2})/g;
     let m;
     while ((m = re.exec(seg)) !== null) weeks.push(parseInt(m[1], 10));
-    return { prefix: p ? p[1] : '', weeks, year: y ? parseInt(y[1], 10) : null };
+    // "A-W43-2026" or the full word "Alex-W43-2026" / "Delta-…" / "Upper-…"
+    const pre = p ? p[1] : '';
+    const prefix = pre.length > 1 ? (detectArea(pre) || pre) : pre;
+    return { prefix, weeks, year: y ? parseInt(y[1], 10) : null };
   }).filter(seg => seg.weeks.length > 0);
 }
 

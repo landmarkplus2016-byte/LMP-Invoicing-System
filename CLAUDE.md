@@ -388,7 +388,7 @@ Plans the **next submission of a TSR** straight from the master tracking. All el
 ### Planning rules (`runPlan`)
 
 1. **Live tasks** — `statusClass()`: Cancelled (+ misspellings Cancalled / Cancel), Withdraw, Repeated, Duplicated, Closed, REJ are dead; `Done` is done; anything else (Assigned, Hold, blank) is open.
-2. **Already submitted** — a task matched to a row already in this TSR file (Site + item key, Certificate # preferred), or with any **PO status**. **Planned in another TSR** — TSR Sub# filled but not starting with this TSR # (and not submitted).
+2. **Already submitted** — a task matched to a row already in this TSR file (Site + item key, Certificate # preferred), or with a PO status — **except PO status `ok`** when the task is tagged with this TSR # (`1326`, `1326 sub-2`, `check 1326`) or not tagged at all: in the tracking `ok` means "picked for a submission, not received yet", and for this TSR the loaded TSR file is the truth, so such a task stays available. `Received`, `REJ`, other statuses and other TSRs' tags exclude. **Planned in another TSR** — TSR Sub# filled with another TSR # (and not submitted). (Before this rule, running on a TSR file without Sub-2 skipped every Sub-2 task marked `ok` and planned a different batch on top of it.)
 3. **TOC track** — EX01 / EX02, Acceptance Status `TOC`, or week starting `TOC` are kept out of the combos and listed separately (planned later, separate TOC mails).
 4. **Combo = Job Code + Site** (FAC tasks only). Skipped: fully submitted, no item in this TSR, USO comment. A combo is **ready** only if it has no reason: no task planned in another TSR, no part already submitted, every task Done + FAC date + readable acceptance week + item in the TSR + a known distance + found in its acceptance mail (count-aware, Certificate # then Facing preferred; mail rows are claimed oldest combo first). Corrections from the mail (`mailFixes`) are the same rules as TSR Sub Order.
 5. **Distance used for quantity** — VF's distance from the hidden site list when the site is listed (that is what the TSR formula uses), else the tracking distance (VF fills `#N/A` sites after the file is sent). `t.effQty = Absolute Qty × that factor`.
@@ -612,4 +612,4 @@ The `formatDate()` function remains in the codebase but is no longer used for Ex
 
 ## Service Worker Cache
 
-When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v24` → `lmp-invoicing-v25`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v50`.
+When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v24` → `lmp-invoicing-v25`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v51`.
