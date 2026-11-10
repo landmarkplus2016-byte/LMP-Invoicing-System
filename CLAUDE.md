@@ -86,6 +86,8 @@ A **My Files** tab (`panel-sources`, IDs `src-*`) plus a gold **⚡ Load My File
 
 **Loading (`loadAll`)** — on the button click (user activation): `queryPermission` → `requestPermission({mode:'read'})` for each handle (Chrome asks once per session unless the user picks *Allow on every visit*; a `SecurityError` asks the user to click again). Then each file is read with `handle.getFile()` and handed to every input of that source exactly like drag & drop — `DataTransfer` + `change` event for file inputs, `folderdrop` CustomEvent with `webkitRelativePath` rebuilt (`Root/sub/…/name`) for folder inputs — so **no app needed changing**. A missing file (`NotFoundError`) is shown as "moved or renamed? Set it again".
 
+**Wrong-file guard** — file sources declare the sheets they must contain (`tracking` → `Invoicing Track`, `accsheet` → `Total`, `poc` → `POC3 Tracking`, the TSR file → `Request Form - VF` + `PO Break Down- Contractor & Acc`). `missingSheets()` reads only the sheet names (`bookSheets: true`) when a file is picked (a wrong file is not saved) and again on every load (a wrong file is never handed to the tabs; the row shows "Wrong file … it has: …"). Added after a neighbouring workbook (`TX_Upgrade_Eligibility_Apr2026.xlsx`) was picked as the tracking file and every tab showed "Invoicing Track not found".
+
 **Shared read** — `File.prototype.arrayBuffer` is wrapped so every File with the same `name|size|lastModified` as a loaded source returns one cached buffer, and `XLSX.read` is wrapped to cache the workbook per buffer + options (only for those registered buffers). One load of all tabs = one parse of the tracking file (tested: 3 parses for 14 inputs). Safe because no app mutates a workbook. The POC tab reads with `FileReader`, so it parses its own copy.
 
 **Testing note** — reading a `FileSystemHandle` back from IndexedDB crashes the sandboxed headless Chromium used for tests; it is the standard pattern in real Chrome. Tests use `window.LMPSources.setHandle()` with OPFS handles and load in the same page.
@@ -610,4 +612,4 @@ The `formatDate()` function remains in the codebase but is no longer used for Ex
 
 ## Service Worker Cache
 
-When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v24` → `lmp-invoicing-v25`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v49`.
+When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v24` → `lmp-invoicing-v25`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v50`.

@@ -2042,3 +2042,7 @@ details.tsrval-folder-section {
 @media (max-width: 768px) {
   .sidebar-load-note { display: none; }
 }
+
+.tsp-howto { margin-bottom: 1rem; }
+.tsp-steps { margin: 0.5rem 0 0.75rem 1.25rem; line-height: 1.6; font-size: 0.92rem; color: #1a3a5c; }
+.tsp-steps li { margin-bottom: 0.35rem; }

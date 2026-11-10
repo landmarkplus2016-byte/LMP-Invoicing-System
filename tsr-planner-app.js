@@ -89,8 +89,7 @@ el('tsp-input-folder').addEventListener('change', e => loadFolderFiles(Array.fro
 el('tsp-input-folder').addEventListener('folderdrop', e => loadFolderFiles(e.detail));
 
 function loadFolderFiles(files) {
-  if (!files.length) return;
-  clearError();
+  if (!files.length) return;   // errors from the file cards stay visible
   ({ mails: _mails, ignored: _ignored } = C.buildMailList(files));
   _mailCache = new Map();
   const root = (files[0].webkitRelativePath || '').split('/')[0] || 'Folder';

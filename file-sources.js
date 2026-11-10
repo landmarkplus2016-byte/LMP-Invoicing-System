@@ -20,21 +20,38 @@ const $ = id => document.getElementById(id);
 
 // Sources and the inputs each one fills
 const SOURCES = [
-  { id: 'tracking', kind: 'file', label: 'Task Tracking File', hint: 'Total Task Tracking New 2026.xlsm',
+  { id: 'tracking', kind: 'file', label: 'Task Tracking File', hint: 'Total Task Tracking New 2026.xlsm', sheets: ['Invoicing Track'],
     usedBy: 'TSR Sub Prep · Validation · Sub Order · Planner · Contractor · Finance · Acceptance Check',
     inputs: ['tracking-input', 'tsrval-input-trk', 'tso-input-track', 'tsp-input-track',
              'con-track-input', 'con2-track-input', 'contxrx-track-input', 'fin-track-input', 'acc-input-track'] },
   { id: 'mails', kind: 'dir', label: 'Acceptance Mails Folder', hint: 'Signed PDF › 2026 (Upper-Cairo / Alex / Delta)',
     usedBy: 'Sub Order · Planner', folderInputs: ['tso-input-folder', 'tsp-input-folder'] },
-  { id: 'accsheet', kind: 'file', label: 'Acceptance Sheet', hint: 'Total Acceptance Tracking.xlsx',
+  { id: 'accsheet', kind: 'file', label: 'Acceptance Sheet', hint: 'Total Acceptance Tracking.xlsx', sheets: ['Total'],
     usedBy: 'Acceptance Check', inputs: ['acc-input-acc'] },
-  { id: 'poc', kind: 'file', label: 'POC3 Tracking File', hint: 'POC3 Tracking',
+  { id: 'poc', kind: 'file', label: 'POC3 Tracking File', hint: 'POC3 Tracking', sheets: ['POC3 Tracking'],
     usedBy: 'POC Invoice Prep · Contractor (POC) · Finance (POC)', inputs: ['fileInput', 'con-poc-track-input', 'poc-track-input'] },
   { id: 'tsrroot', kind: 'dir', label: 'TSR Root Folder', hint: 'Alya Sheets › TSR — then pick the TSR file below',
     usedBy: 'TSR file: Sub Prep · Validation · Sub Order · Planner — its Sub folder: Validation mails' }
 ];
 const TSR_INPUTS    = ['tsr-input', 'tsrval-input-tsr', 'tso-input-tsr', 'tsp-input-tsr'];
 const TSR_FOLDER_IN = ['tsrval-input-folder'];
+const TSR_SHEETS    = ['Request Form - VF', 'PO Break Down- Contractor & Acc'];
+
+// A wrong pick (e.g. another workbook from the same folder) must never reach the
+// tabs: check the sheet names first (bookSheets = names only, fast even for 5 MB).
+async function missingSheets(file, need, buf) {
+  if (!need || !need.length || !window.XLSX) return { missing: [], names: [] };
+  const data = buf || await _origArrayBuffer.call(file);
+  let names = [];
+  try { names = XLSX.read(data, { type: 'array', bookSheets: true }).SheetNames || []; } catch { names = []; }
+  const have = new Set(names.map(n => n.trim().toLowerCase()));
+  return { missing: need.filter(n => !have.has(n.toLowerCase())), names };
+}
+function wrongFileText(file, need, check) {
+  return 'Wrong file: "' + file.name + '" has no ' + check.missing.map(m => '"' + m + '"').join(' / ') +
+    ' sheet' + (check.names.length ? ' (it has: ' + check.names.slice(0, 6).join(', ') + (check.names.length > 6 ? '…' : '') + ')' : '') +
+    '. Click Change and pick the right file.';
+}
 
 // ---------------------------------------------------------------------------
 // IndexedDB — handles are structured-cloneable
@@ -228,7 +245,9 @@ async function loadAll() {
           setStatus('Reading ' + st.handle.name + '…');
           const file = await st.handle.getFile();
           registerFile(file);
-          await file.arrayBuffer();                       // read once, now
+          const buf = await file.arrayBuffer();           // read once, now
+          const chk = await missingSheets(file, s.sheets, buf);
+          if (chk.missing.length) { st.status = 'error'; st.note = wrongFileText(file, s.sheets, chk); render(); continue; }
           for (const id of s.inputs) { setInputFile(id, file); await pause(30); }
           st.note = 'loaded ' + fmtTime(file.lastModified);
           log.push(file.name);
@@ -246,7 +265,9 @@ async function loadAll() {
           if (!pick) { st.note = 'no .xlsb file found'; continue; }
           const file = await pick.handle.getFile();
           registerFile(file);
-          await file.arrayBuffer();
+          const buf = await file.arrayBuffer();
+          const chk = await missingSheets(file, TSR_SHEETS, buf);
+          if (chk.missing.length) { st.status = 'error'; st.note = wrongFileText(file, TSR_SHEETS, chk) + ' (or choose another TSR file below)'; render(); continue; }
           for (const id of TSR_INPUTS) { setInputFile(id, file); await pause(30); }
           // its Sub folder's numbered mail folders → TSR Sub Validation
           const subName = pick.dirPath.split('/').pop() || st.handle.name;
@@ -286,8 +307,21 @@ async function pick(id) {
     } else {
       handle = await window.showDirectoryPicker({ id: 'lmp-' + id, mode: 'read' });
     }
+    if (s.kind === 'file' && s.sheets) {
+      setStatus('Checking ' + handle.name + '…');
+      const file = await handle.getFile();
+      const chk = await missingSheets(file, s.sheets);
+      if (chk.missing.length) {
+        const msg = wrongFileText(file, s.sheets, chk).replace('Click Change and pick the right file.', 'Not saved — pick ' + s.hint + '.');
+        if (state[id]) state[id].note = msg;
+        setStatus('✖ ' + s.label + ': ' + msg);
+        render();
+        return;
+      }
+    }
     await idbSet('h:' + id, handle);
     state[id] = { handle, status: 'saved', note: 'set — load to read it' };
+    setStatus('✔ ' + s.label + ' set to ' + handle.name + '.');
     if (id === 'tsrroot') { _tsrList = await scanTsr(handle); renderTsrSelect(); }
     render();
   } catch (e) {
