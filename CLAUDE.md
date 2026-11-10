@@ -20,6 +20,7 @@ All logic lives in the files below, loaded by `index.html` as plain `<script>` t
 | `tsr-order-app.js` | TSR Sub Order — lists one TSR Sub#'s tasks in acceptance-mail order, capped by TSR qty, up to a target amount |
 | `tsr-core.js` | Shared TSR rules (`window.TSRCore`) — matching keys, distance bands, week parsing, mail reading, tracking + TSR file readers. Must load before `tsr-planner-app.js` |
 | `tsr-planner-app.js` | TSR Planner — readiness check of every Site + Job Code combo, oldest-first plan within the TSR Remaining, paste-ready blocks for the protected PO Break Down sheet, receiving template, mail folders, allocation list |
+| `file-sources.js` | My Files — remembers file / folder locations (File System Access API, Chrome / Edge) and loads them into every tab with one **Load My Files** click; shares one parsed tracking workbook across tabs |
 | `contractor-app.js` | Contractor Invoices — four sub-tabs (2026 Tasks, Pre-2026 Tasks, TX-RX Tasks, POC Invoices), generates one styled XLSX per contractor |
 | `finance-app.js` | Finance Sheet — two sub-tabs (TX-RF Track, POC Tracking), filters by invoice numbers, exports styled XLSX |
 | `acceptance-check-app.js` | Acceptance Check — compares tracking line items for one week + area against the acceptance sheet (`Total` tab) and lists mismatches |
@@ -66,6 +67,28 @@ A single inline script in `index.html` makes every `.file-card` a drop target �
 Folder inputs (`webkitdirectory`, i.e. the TSR Mails Folder) can't be filled that way: the script walks the dropped directory with `webkitGetAsEntry()`, rebuilds `webkitRelativePath` (`Root/1/mail.msg`) on each file, and dispatches a `folderdrop` CustomEvent (`detail` = files) on the input. `tsr-validation-app.js` listens for it and calls the same `loadFolderFiles()` as its `change` handler. The POC tab keeps its own `#dropZone` handler.
 
 **New upload cards get drag & drop automatically** as long as they use `.file-card` with an `<input type="file">` inside.
+
+## My Files — remembered sources (`file-sources.js`)
+
+A **My Files** tab (`panel-sources`, IDs `src-*`) plus a gold **⚡ Load My Files** button in the sidebar footer (`#btn-load-sources`, last-load time in `#btn-load-sources-note`). Chrome / Edge only (`showOpenFilePicker` / `showDirectoryPicker`); other browsers see a notice and keep the normal Browse buttons.
+
+**Sources (`SOURCES`)** — each a file or folder handle saved in IndexedDB (`lmp-invoicing` / `sources`, key `h:<id>`; this browser on this computer only):
+
+| id | Kind | Fills these inputs |
+|---|---|---|
+| `tracking` | file | `tracking-input`, `tsrval-input-trk`, `tso-input-track`, `tsp-input-track`, `con-track-input`, `con2-track-input`, `contxrx-track-input`, `fin-track-input`, `acc-input-track` |
+| `mails` | folder | `tso-input-folder`, `tsp-input-folder` (via `folderdrop`) |
+| `accsheet` | file | `acc-input-acc` |
+| `poc` | file | `fileInput` (POC tab), `con-poc-track-input`, `poc-track-input` |
+| `tsrroot` | folder | the selected TSR file → `tsr-input`, `tsrval-input-tsr`, `tso-input-tsr`, `tsp-input-tsr`; its Sub folder's **numbered** sub-folders → `tsrval-input-folder` |
+
+**TSR file choice** — `scanTsr()` lists every `.xlsb` up to `Root/<TSR#>/<Sub-n>/` (newest first) in `#src-tsr-select`; the choice is saved as `tsr:selected` (relative path), default = newest.
+
+**Loading (`loadAll`)** — on the button click (user activation): `queryPermission` → `requestPermission({mode:'read'})` for each handle (Chrome asks once per session unless the user picks *Allow on every visit*; a `SecurityError` asks the user to click again). Then each file is read with `handle.getFile()` and handed to every input of that source exactly like drag & drop — `DataTransfer` + `change` event for file inputs, `folderdrop` CustomEvent with `webkitRelativePath` rebuilt (`Root/sub/…/name`) for folder inputs — so **no app needed changing**. A missing file (`NotFoundError`) is shown as "moved or renamed? Set it again".
+
+**Shared read** — `File.prototype.arrayBuffer` is wrapped so every File with the same `name|size|lastModified` as a loaded source returns one cached buffer, and `XLSX.read` is wrapped to cache the workbook per buffer + options (only for those registered buffers). One load of all tabs = one parse of the tracking file (tested: 3 parses for 14 inputs). Safe because no app mutates a workbook. The POC tab reads with `FileReader`, so it parses its own copy.
+
+**Testing note** — reading a `FileSystemHandle` back from IndexedDB crashes the sandboxed headless Chromium used for tests; it is the standard pattern in real Chrome. Tests use `window.LMPSources.setHandle()` with OPFS handles and load in the same page.
 
 ## Sub-Tab Pattern
 
@@ -587,4 +610,4 @@ The `formatDate()` function remains in the codebase but is no longer used for Ex
 
 ## Service Worker Cache
 
-When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v24` → `lmp-invoicing-v25`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v48`.
+When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v24` → `lmp-invoicing-v25`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v49`.

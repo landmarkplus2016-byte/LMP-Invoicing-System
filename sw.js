@@ -4,7 +4,7 @@
 // CDN libraries (SheetJS, ExcelJS) are NOT cached — pulled fresh each session.
 // =============================================================================
 
-const CACHE = 'lmp-invoicing-v48';
+const CACHE = 'lmp-invoicing-v49';
 const FILES = [
   './',
   './index.html',
@@ -14,6 +14,7 @@ const FILES = [
   './tsr-order-app.js',
   './tsr-core.js',
   './tsr-planner-app.js',
+  './file-sources.js',
   './contractor-app.js',
   './finance-app.js',
   './acceptance-check-app.js',

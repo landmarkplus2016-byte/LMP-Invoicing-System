@@ -70,9 +70,18 @@
           <span class="nav-icon">&#128269;</span>
           <span class="nav-label">Acceptance Check</span>
         </button>
+        <button class="nav-item" role="tab" aria-selected="false" data-tab="sources">
+          <span class="nav-icon">&#128194;</span>
+          <span class="nav-label">My Files</span>
+        </button>
       </nav>
 
       <div class="sidebar-footer">
+        <button class="sidebar-refresh-btn sidebar-load-btn" id="btn-load-sources" title="Load your saved files and folders into every tab">
+          <span class="nav-icon">&#9889;</span>
+          <span class="nav-label">Load My Files</span>
+        </button>
+        <div class="sidebar-load-note" id="btn-load-sources-note"></div>
         <button class="sidebar-refresh-btn" id="btn-refresh" title="Clear all data and start a new analysis">
           <span class="nav-icon">&#8635;</span>
           <span class="nav-label">New Analysis</span>
@@ -998,6 +1007,44 @@
       </div>
 
       <!-- ================================================================
+           TAB: My Files (remembered file / folder locations)
+           ================================================================ -->
+      <div id="panel-sources" class="tab-panel" style="display:none">
+        <main class="tsr-main">
+          <section class="card">
+            <h2>My Files</h2>
+            <div id="src-unsupported" class="acc-banner acc-banner-fail" style="display:none">
+              Remembering file locations needs <strong>Google Chrome</strong> (or Edge). In this browser, use the Browse buttons in each tab.
+            </div>
+            <div id="src-main">
+              <p class="card-hint">
+                Pick each file or folder <strong>once</strong>. After that, <strong>&#9889; Load My Files</strong> (sidebar) reads the
+                current version from your computer and loads it into every tab — you only press Build / Analyze.
+                Locations are remembered in this browser on this computer only; nothing is uploaded. The first load in a new
+                browser session asks you to allow access (choose <em>Allow on every visit</em> to skip that next time).
+              </p>
+              <div class="table-wrapper">
+                <table class="acc-table src-table">
+                  <thead><tr><th>Source</th><th>Location</th><th>Status</th><th></th></tr></thead>
+                  <tbody id="src-rows"></tbody>
+                </table>
+              </div>
+              <div id="src-tsr-wrap" class="acc-controls src-tsr-wrap" style="display:none">
+                <div class="acc-control src-tsr-control">
+                  <label for="src-tsr-select">TSR file to load (newest first)</label>
+                  <select id="src-tsr-select" class="acc-input"></select>
+                </div>
+              </div>
+              <div class="src-load-row">
+                <button id="src-btn-load" class="btn-primary">&#9889;&nbsp; Load My Files</button>
+                <span id="src-status" class="con-export-status"></span>
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
+
+      <!-- ================================================================
            TAB: Acceptance Check
            ================================================================ -->
       <div id="panel-acccheck" class="tab-panel" style="display:none">
@@ -1109,6 +1156,7 @@
   <script src="contractor-app.js"></script>
   <script src="finance-app.js"></script>
   <script src="acceptance-check-app.js"></script>
+  <script src="file-sources.js"></script>
 
   <!-- Tab switching logic -->
   <script>
@@ -1125,7 +1173,8 @@
         tsrplan:    'TSR Planner',
         contractor: 'Contractor Invoices',
         finance:    'Finance Sheet',
-        acccheck:   'Acceptance Check'
+        acccheck:   'Acceptance Check',
+        sources:    'My Files'
       };
 
       navItems.forEach(btn => {
