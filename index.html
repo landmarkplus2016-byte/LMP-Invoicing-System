@@ -54,6 +54,10 @@
           <span class="nav-icon">&#128233;</span>
           <span class="nav-label">TSR Sub Order</span>
         </button>
+        <button class="nav-item" role="tab" aria-selected="false" data-tab="tsrplan">
+          <span class="nav-icon">&#129517;</span>
+          <span class="nav-label">TSR Planner</span>
+        </button>
         <button class="nav-item" role="tab" aria-selected="false" data-tab="contractor">
           <span class="nav-icon">&#128209;</span>
           <span class="nav-label">Contractor Invoices</span>
@@ -399,6 +403,104 @@
             <div id="tso-selected-wrap"></div>
             <div id="tso-skipped-wrap"></div>
             <div id="tso-mails-wrap"></div>
+          </section>
+
+        </main>
+      </div>
+
+      <!-- ================================================================
+           TAB: TSR Planner
+           ================================================================ -->
+      <div id="panel-tsrplan" class="tab-panel" style="display:none">
+        <main class="tsr-main">
+
+          <div id="tsp-error" role="alert" class="con-error-msg" style="display:none"></div>
+
+          <section class="card">
+            <h2>Upload Files</h2>
+            <div class="file-cards tso-file-cards">
+              <div id="tsp-card-track" class="file-card">
+                <div class="file-icon">&#128193;</div>
+                <div class="file-label">Task Tracking File (.xlsm)</div>
+                <button id="tsp-btn-track" class="btn-secondary">Browse File</button>
+                <input type="file" id="tsp-input-track" accept=".xlsm,.xlsx" style="display:none" />
+                <span id="tsp-track-filename" class="filename-display">No file selected</span>
+                <div class="file-progress" id="tsp-track-progress"></div>
+              </div>
+              <div id="tsp-card-tsr" class="file-card">
+                <div class="file-icon">&#128203;</div>
+                <div class="file-label">TSR File (.xlsb)</div>
+                <button id="tsp-btn-tsr" class="btn-secondary">Browse File</button>
+                <input type="file" id="tsp-input-tsr" accept=".xlsb,.xlsx" style="display:none" />
+                <span id="tsp-tsr-filename" class="filename-display">No file selected</span>
+                <div class="file-progress" id="tsp-tsr-progress"></div>
+              </div>
+              <div id="tsp-card-folder" class="file-card">
+                <div class="file-icon">&#128233;</div>
+                <div class="file-label">Acceptance Mails Folder</div>
+                <button id="tsp-btn-folder" class="btn-secondary">Browse Folder</button>
+                <input type="file" id="tsp-input-folder" webkitdirectory style="display:none" />
+                <span id="tsp-folder-filename" class="filename-display">No folder selected</span>
+                <div class="file-progress" id="tsp-folder-progress"></div>
+              </div>
+            </div>
+
+            <div class="acc-controls tsp-controls">
+              <div class="acc-control">
+                <label for="tsp-tsrno">TSR #</label>
+                <input type="text" id="tsp-tsrno" class="acc-input tsp-input-sm" placeholder="from TSR file" />
+              </div>
+              <div class="acc-control">
+                <label for="tsp-sub">Submission #</label>
+                <input type="number" id="tsp-sub" class="acc-input tsp-input-sm" min="1" placeholder="next" />
+              </div>
+              <div class="acc-control">
+                <label for="tsp-row">Paste at TSR row</label>
+                <input type="number" id="tsp-row" class="acc-input tsp-input-sm" min="10" placeholder="next empty" />
+              </div>
+              <div class="acc-control">
+                <label for="tsp-date">Submission Date (optional)</label>
+                <input type="date" id="tsp-date" class="acc-input" />
+              </div>
+              <div class="acc-control">
+                <label for="tsp-po">PO# (receiving file)</label>
+                <input type="text" id="tsp-po" class="acc-input" placeholder="e.g. 3006420072" />
+              </div>
+              <button id="tsp-btn-run" class="btn-primary" disabled>&#129517;&nbsp; Build Plan</button>
+            </div>
+            <p class="tso-amount-hint"><span id="tsp-tsr-hint"></span></p>
+
+            <p class="card-hint" style="margin-top:0.75rem;">
+              The planner checks every <strong>Site + Job Code</strong> combo in the tracking: all tasks Done, FAC date,
+              acceptance week, found in its acceptance mail, item in the TSR, distance known. Ready combos go in
+              <strong>oldest acceptance first</strong>, whole combos only, within each item's TSR Remaining.
+              EX01/EX02 and TOC items are a separate TOC track (listed, planned later).
+              Outputs: paste-ready blocks for the protected PO Break Down sheet, the receiving template for VF invoicing,
+              the numbered mail folders and the TSR Sub# allocation for the tracking.
+            </p>
+          </section>
+
+          <div id="tsp-loading" class="con-loading-wrap" style="display:none">
+            <div class="spinner"></div>
+            <p>Planning&hellip;</p>
+          </div>
+
+          <section id="tsp-results" class="card" style="display:none">
+            <div class="tso-results-head">
+              <h2>Submission Plan</h2>
+              <div class="tso-actions">
+                <button id="tsp-btn-paste" class="btn btn-success" disabled title="Paste-ready blocks + allocation + checks">&#8659; TSR Paste File</button>
+                <button id="tsp-btn-recv" class="btn btn-success" disabled title="Receiving template for VF invoicing">&#8659; Receiving Template</button>
+                <button id="tsp-btn-folders" class="btn btn-success" disabled title="Mails in numbered folders 1, 2, 3…">&#128193; Mail Folders</button>
+              </div>
+            </div>
+            <p id="tsp-export-status" class="con-export-status"></p>
+            <div id="tsp-col-info" class="acc-col-info"></div>
+            <div id="tsp-summary"></div>
+            <div id="tsp-planned-wrap"></div>
+            <div id="tsp-qty-wrap"></div>
+            <div id="tsp-waiting-wrap"></div>
+            <div id="tsp-blocked-wrap"></div>
           </section>
 
         </main>
@@ -1002,6 +1104,8 @@
   <script src="tsr-app.js"></script>
   <script src="tsr-validation-app.js"></script>
   <script src="tsr-order-app.js"></script>
+  <script src="tsr-core.js"></script>
+  <script src="tsr-planner-app.js"></script>
   <script src="contractor-app.js"></script>
   <script src="finance-app.js"></script>
   <script src="acceptance-check-app.js"></script>
@@ -1018,6 +1122,7 @@
         tsr:        'TSR Sub Prep',
         tsrval:     'TSR Sub Validation',
         tsrorder:   'TSR Sub Order',
+        tsrplan:    'TSR Planner',
         contractor: 'Contractor Invoices',
         finance:    'Finance Sheet',
         acccheck:   'Acceptance Check'

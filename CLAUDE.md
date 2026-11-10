@@ -10,7 +10,7 @@ A static, no-build PWA (Progressive Web App) for the Landmark Plus Telecom Depar
 
 ## Architecture
 
-All logic lives in six files loaded by `index.html` as plain `<script>` tags:
+All logic lives in the files below, loaded by `index.html` as plain `<script>` tags:
 
 | File | Purpose |
 |---|---|
@@ -18,6 +18,8 @@ All logic lives in six files loaded by `index.html` as plain `<script>` tags:
 | `tsr-app.js` | TSR Sub Prep — reads two Excel files, cross-references them, exports XLSX |
 | `tsr-validation-app.js` | TSR Sub Validation — validates a TSR submission against Excel/PDF mail attachments |
 | `tsr-order-app.js` | TSR Sub Order — lists one TSR Sub#'s tasks in acceptance-mail order, capped by TSR qty, up to a target amount |
+| `tsr-core.js` | Shared TSR rules (`window.TSRCore`) — matching keys, distance bands, week parsing, mail reading, tracking + TSR file readers. Must load before `tsr-planner-app.js` |
+| `tsr-planner-app.js` | TSR Planner — readiness check of every Site + Job Code combo, oldest-first plan within the TSR Remaining, paste-ready blocks for the protected PO Break Down sheet, receiving template, mail folders, allocation list |
 | `contractor-app.js` | Contractor Invoices — four sub-tabs (2026 Tasks, Pre-2026 Tasks, TX-RX Tasks, POC Invoices), generates one styled XLSX per contractor |
 | `finance-app.js` | Finance Sheet — two sub-tabs (TX-RF Track, POC Tracking), filters by invoice numbers, exports styled XLSX |
 | `acceptance-check-app.js` | Acceptance Check — compares tracking line items for one week + area against the acceptance sheet (`Total` tab) and lists mismatches |
@@ -343,6 +345,44 @@ Amount = `New Total`. The selected list is re-sorted to mail order and the runni
 
 **Download Mail Folders** (`TSR_Sub_<n>_Mails_<date>.zip`): the original mail files placed in folders `1/`, `2/`, `3/`… matching the Folder column. Uses **JSZip** (cdnjs 3.10.1), loaded on demand by script injection like PDF.js — a browser cannot save loose folders, so they are zipped.
 
+## TSR Planner (`tsr-planner-app.js` + `tsr-core.js`)
+
+Plans the **next submission of a TSR** straight from the master tracking. All element IDs use the `tsp-*` prefix. Shared rules live in `tsr-core.js` (`window.TSRCore`) so a rule is written once; the Planner is the first user (the older TSR tabs keep their own copies for now).
+
+**Inputs:** Tracking file (`Invoicing Track`, every column found by header name — `readTracking`), TSR file (.xlsb — `readTsrFile`), acceptance mails folder (Upper-Cairo / Alex / Delta, same reading as TSR Sub Order — `buildMailList`, `parseMailFile`). Settings are pre-filled and editable: **TSR #** (Request Form "Req Form#" cell, else digits in the file name), **Submission #** (last submission in PO Break Down + 1), **Paste at TSR row** (first empty row after the last used Site ID / item row, never above row 10), **Submission Date** (optional, column X), **PO#** (for the receiving file; pre-filled from the tracking `PO number` of tasks whose TSR Sub# starts with the TSR #).
+
+### What `readTsrFile` reads
+
+- **Request Form - VF** — item name (kept **verbatim**, trailing spaces included, because the PO Break Down price lookup `VLOOKUP(N, CQ50:CS125)` needs an exact match), Qty, Unit Price, Remaining.
+- **PO Break Down- Contractor & Acc** — header row = the row holding both `Site ID` and `Item Description` (row 8 in VF's template, data from row 10). Read cell by cell (`cellV`), never `sheet_to_json`, because the sheet carries a ~100 000-row hidden site list. Existing rows → submissions present, last used row, per-row qty and the Distance shown (`#N/A` error cells → factor null).
+- **Hidden site list** — the `Site Id | Physical | Region | Governorate | Site Type | Distance` block (columns CV:DA) that the Region / Governorate / Distance / Physical Site formulas look up. Keyed by `siteListKey()`, which mimics `VLOOKUP(…, FALSE)`: case-insensitive, space-sensitive, and **numbers only match numbers** (`3618` ≠ `"3618"`).
+- **Dropdown lists** at fixed addresses, each sanity-checked: vendors `CO58:CO61`, General Stream `CO63:CO155`; price catalogue `CQ:CS`.
+- **Receiving** — `Submission #n` columns; a submission whose total (row below the header) is > 0 has been **received** by VF.
+- **Receiving Template** — VF's catalogue for the receiving file: Vendor Name, Vendor ID, Description, Unit Cost, Line Row, EVO Mat. No., Stream Name.
+
+### Planning rules (`runPlan`)
+
+1. **Live tasks** — `statusClass()`: Cancelled (+ misspellings Cancalled / Cancel), Withdraw, Repeated, Duplicated, Closed, REJ are dead; `Done` is done; anything else (Assigned, Hold, blank) is open.
+2. **Already submitted** — a task matched to a row already in this TSR file (Site + item key, Certificate # preferred), or with any **PO status**. **Planned in another TSR** — TSR Sub# filled but not starting with this TSR # (and not submitted).
+3. **TOC track** — EX01 / EX02, Acceptance Status `TOC`, or week starting `TOC` are kept out of the combos and listed separately (planned later, separate TOC mails).
+4. **Combo = Job Code + Site** (FAC tasks only). Skipped: fully submitted, no item in this TSR, USO comment. A combo is **ready** only if it has no reason: no task planned in another TSR, no part already submitted, every task Done + FAC date + readable acceptance week + item in the TSR + a known distance + found in its acceptance mail (count-aware, Certificate # then Facing preferred; mail rows are claimed oldest combo first). Corrections from the mail (`mailFixes`) are the same rules as TSR Sub Order.
+5. **Distance used for quantity** — VF's distance from the hidden site list when the site is listed (that is what the TSR formula uses), else the tracking distance (VF fills `#N/A` sites after the file is sent). `t.effQty = Absolute Qty × that factor`.
+6. **Available quantity** = Request Form Remaining − rows of submissions in the file that VF has **not received yet** (Remaining only drops on receiving). Each such row uses the Distance the TSR shows, else the matched task's tracking distance.
+7. **Allocation** — ready combos sorted by acceptance week (`weekSortKey`), label, first row; each whole combo is taken if every item fits, else it goes to **Waiting for qty** with the shortfall. Rows are output in mail order; mails holding planned rows are numbered folders 1, 2, 3…
+8. **General Stream** — per combo, from the main item (`STREAM_RULES`: RF macro → New Physical Sites, TX04 → Upgrade-MW Link E-Band 2+0, TX03 → E-Band 1+0, TX05 / TX19 → XPIC 2+0, TX09 → IDU, TX16 → Additional Cards with Cables, RF09 → Add Sector, PW02 → Add Batteries & Rectifiers, TX10–15 → Upgrade-TX Cutover). A TX03/04/05 combo on a site that also has an RF macro task is flagged (New Physical Sites suggested). Valid values = the TSR dropdown + the Receiving Template stream names (VF uses `Upgrade-MW Link E-Band 2+0`, which is missing from the dropdown). Each combo has a `<select>` in the results; a choice overrides the rule in the exports (`_streamOverride`).
+
+### Exports
+
+- **TSR Paste File** (`TSR_<no>_Sub-<n>_Paste_<date>.xlsx`) — sheet **TSR Paste** uses the **same column letters as PO Break Down** (row 3 = the TSR headers, data from row 4). The sheet is protected and Excel refuses a paste touching a locked cell, so the editable columns are 5 blocks — **C:D, H:J, M:N, P, S:Y** — each labelled in row 2 with its exact copy range and target cell (`paste at C421`). Values: C owner, D vendor (dropdown spelling), H Site ID (trimmed, numeric IDs as numbers), I option, J facing (mail-corrected), M task date, N Request Form item name, P absolute qty, S stream, T PRQ, U Certificate # (mail-corrected), V `FAC`, W `Submission #n`, X submission date, Y folder #. The formula columns E F G K L O Q R are grey **previews** of what the TSR will calculate (red `#N/A` = site not in VF's list) — never pasted. Yellow = corrected from mail, pink stream = needs a check. Other sheets: How to paste, **Allocation** (tracking row → `"<TSR> sub-<n>"` to write in the TSR Sub# column), Qty Check (formula balance), Waiting for Qty, Not Ready, In Another TSR, TOC Track (later).
+- **Receiving Template** (`Receiving Template LMP TSR <no> Sub-<n>.xlsx`) — LMP's layout (sheet `Receiving`, Aptos Narrow 11, header row 2 filled `#C0E6F5`, Grand Total row, `I = E*H`): one row per Receiving Template item with qty > 0; QTY = Σ effQty of the planned rows; **Line Row = 1 and PO unit price = 1** (the user's convention, confirmed); PO# from the setting.
+- **Mail Folders** (`TSR_<no>_Sub-<n>_Mails_<date>.zip`) — same as TSR Sub Order.
+
+### Verified against TSR 1326 (Nov 2026)
+
+Pasting the blocks into a copy of the real TSR and evaluating VF's lookups: every price and distance lookup resolved and the grey previews equalled the TSR results; receiving quantities equalled the quantities the TSR computes; Activity Dates matched the tracking in both UTC and Africa/Cairo.
+
+`excelDate()` in `tsr-core.js` rounds to the nearest minute and writes the calendar day as UTC midnight — SheetJS can return a date a few seconds **before** midnight (16-Aug read as 15-Aug 23:59:51), which the older `getTimezoneOffset()` shift used by other tabs does not correct.
+
 ## Contractor App Data Flow (`contractor-app.js`)
 
 The Contractor tab has **four sub-tabs**, each with its own state, file picker, and export logic.
@@ -547,4 +587,4 @@ The `formatDate()` function remains in the codebase but is no longer used for Ex
 
 ## Service Worker Cache
 
-When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v24` → `lmp-invoicing-v25`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v47`.
+When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v24` → `lmp-invoicing-v25`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v48`.

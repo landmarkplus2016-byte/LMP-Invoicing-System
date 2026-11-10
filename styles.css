@@ -1988,3 +1988,17 @@ details.tsrval-folder-section {
   border: 1px solid #f6e05e;
   color: #744210;
 }
+
+/* ---------------------------------------------------------------------------
+   TSR Planner (tsp-*)
+   --------------------------------------------------------------------------- */
+.tsp-controls { flex-wrap: wrap; }
+.tsp-input-sm { width: 110px; }
+.tsp-stream {
+  max-width: 260px;
+  font-size: 0.8rem;
+  padding: 2px 4px;
+  border: 1px solid #b7c7d9;
+  border-radius: 4px;
+  background: #fff;
+}
