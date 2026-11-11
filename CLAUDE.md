@@ -405,7 +405,7 @@ Plans the **next submission of a TSR** straight from the master tracking. All el
 
 ### Shared helpers in `tsr-core.js` (Planner + New PO)
 
-`matchExisting(tsr, tasks, tag)` → `{ inTsr: Map(task → submission #), pairs: [{ex, task}], unmatched }` (Site + item key, Certificate # preferred, then a task tagged with this TSR). `tsrAvailable(tsr, pairs)` → `{ avail, pendingUse, pendingSubs }` (Remaining − rows of submissions not yet received). `tagTest(tag)` (TSR Sub# tagged with this TSR: `1326`, `1326 sub-2`, `check 1326`), `tsrSite(t)`. `readTsrFile` items also carry `rfRow`, `unit`, `matGroup`, `evo`, `pa`, `paItem`; tracking tasks carry `price` (`New Price`).
+`matchExisting(tsr, tasks, tag)` → `{ inTsr: Map(task → submission #), pairs: [{ex, task}], unmatched }` (Site + item key; preference: Certificate #, a task tagged with this TSR, Done, same Facing, has a FAC date — added after an old Assigned duplicate of R2233 TX09 took a Sub-2 row). `tsrAvailable(tsr, pairs)` → `{ avail, pendingUse, pendingSubs }` (Remaining − rows of submissions not yet received). `tagTest(tag)` (TSR Sub# tagged with this TSR: `1326`, `1326 sub-2`, `check 1326`), `tsrSite(t)`. `readTsrFile` items also carry `rfRow`, `unit`, `matGroup`, `evo`, `pa`, `paItem`; tracking tasks carry `price` (`New Price`).
 
 ### Plan a New PO (`tsr-newpo-app.js`, IDs `tnp-*`)
 
@@ -416,7 +416,7 @@ A card under the Planner results. Needs only the tracking and the **newest TSR f
 3. **Stays in the current TSR** — combos with a task in the TSR file or tagged with this TSR, any tier, oldest first: stay if every item is on its Request Form and fits `tsrAvailable` (exact qty); otherwise **Moved** into the new-PO pool.
 4. **New PO** — the rest, greedy in order, whole combos; a combo that would pass the budget is skipped (**Over budget**) and the loop continues. Qty per task = Absolute Qty × distance factor (VF site list in the TSR, else tracking, else 1.0 flagged). Request Form quantities are whole numbers, so the budget is checked on Σ ceil(qty per item) × TSR unit price. Items not on the TSR price list use the tracking price (`New Price`, else New Total ÷ qty) and are flagged red.
 
-**Exports:** **New PO File** (`New_PO_Request_<date>.xlsx`) — `Request Form` (every TSR item in Request Form order with Material Group / EVO / PA / PA Item, Qty rounded up, Unit, Unit price, Total formula, Exact Qty, Tasks; non-catalogue items appended red; Grand Total, Budget, Left), `New PO Tasks` (ID# first, write `New PO` in the tracking), `Stays in TSR <no>`, `Qty Check TSR <no>`, `Sent in TSR <no>`, `Over Budget`, `Not Started`, `In Another TSR`, `USO (excluded)`. **Sent Tasks (ID list)** (`TSR_<no>_Sent_Tasks_<date>.xlsx`) — every TSR-file row matched to the tracking: ID#, tracking row, Site, item, TSR row, Submission, the TSR Sub# to write (`1326 sub-2`), the value in the tracking now, `Update?` = Yes (yellow) when they differ; unmatched TSR rows listed in red at the end.
+**Exports:** **New PO File** (`New_PO_Request_<date>.xlsx`) — `Request Form` (every TSR item in Request Form order with Material Group / EVO / PA / PA Item, Qty rounded up, Unit, Unit price, Total formula, Exact Qty, Tasks; non-catalogue items appended red; Grand Total, Budget, Left), `New PO Tasks` (ID# first, write `New PO` in the tracking), `Stays in TSR <no>`, `Qty Check TSR <no>`, `Sent in TSR <no>`, `Over Budget`, `Not Started`, `In Another TSR`, `USO (excluded)`. **Sent Tasks (ID list)** (`TSR_<no>_Sent_Tasks_<date>.xlsx`) — every TSR-file row matched to the tracking: ID#, tracking row, Site, item, TSR row, Submission, the TSR Sub# to write (`1326 sub-2`), the value in the tracking now, `Update?` = Yes (yellow) when they differ, then Certificate # (TSR) vs Certificate # in tracking (yellow when different); unmatched TSR rows listed in red at the end.
 
 Note: the tracking `New Total` is priced lower than the TSR price list for some items (e.g. TX13 4,400 vs 5,000); the budget uses the **TSR** unit prices, which is what the Request Form totals.
 
@@ -630,4 +630,4 @@ The `formatDate()` function remains in the codebase but is no longer used for Ex
 
 ## Service Worker Cache
 
-When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v24` → `lmp-invoicing-v25`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v53`.
+When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v24` → `lmp-invoicing-v25`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v54`.

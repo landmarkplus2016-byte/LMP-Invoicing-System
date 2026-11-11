@@ -351,18 +351,25 @@ function needsUpdate(p, res) { return normSub(p.task.subRaw) !== normSub(subTag(
 // Sent tasks: ID# first so the tracking can VLOOKUP the TSR Sub# by ID
 function addSentSheet(wb, res) {
   const ws = headerSheet(wb, 'Sent in TSR ' + res.tsrNo,
-    ['ID#', 'Tracking Row', 'Job Code', 'Site ID', 'Line Item', 'TSR Row', 'Submission', 'TSR Sub# (write in tracking)', 'TSR Sub# in tracking now', 'Update?'],
-    [24, 12, 12, 12, 48, 9, 12, 22, 22, 9]);
+    ['ID#', 'Tracking Row', 'Job Code', 'Site ID', 'Line Item', 'TSR Row', 'Submission', 'TSR Sub# (write in tracking)', 'TSR Sub# in tracking now', 'Update?',
+     'Certificate # (TSR)', 'Certificate # in tracking'],
+    [24, 12, 12, 12, 48, 9, 12, 22, 22, 9, 16, 16]);
+  const certTxt = v => str(v).replace(/\.0+$/, '');
   const sorted = res.pairs.slice().sort((a, b) => (a.ex.subNo || 0) - (b.ex.subNo || 0) || a.ex.excelRow - b.ex.excelRow);
   addRows(ws, sorted.map(p => [str(p.task.id), p.task.excelRow, p.task.jc, p.task.siteRaw, p.task.item, p.ex.excelRow,
-    p.ex.subNo ? 'Submission #' + p.ex.subNo : '', p.ex.subNo ? subTag(res, p.ex.subNo) : '', p.task.subRaw, needsUpdate(p, res) ? 'Yes' : '']));
-  ws.eachRow((r, n) => { if (n > 1 && r.getCell(10).value === 'Yes') r.getCell(8).fill = fill('FFFFFF00'); });
+    p.ex.subNo ? 'Submission #' + p.ex.subNo : '', p.ex.subNo ? subTag(res, p.ex.subNo) : '', p.task.subRaw, needsUpdate(p, res) ? 'Yes' : '',
+    p.ex.cert, certTxt(p.task.cert)]));
+  ws.eachRow((r, n) => {
+    if (n < 2) return;
+    if (r.getCell(10).value === 'Yes') r.getCell(8).fill = fill('FFFFFF00');
+    if (str(r.getCell(11).value) !== str(r.getCell(12).value)) r.getCell(12).fill = fill('FFFFFF00');
+  });
   if (res.unmatched.length) {
     addRows(ws, res.unmatched.map(ex => ['', '', '', ex.site, ex.itemName, ex.excelRow, ex.subNo ? 'Submission #' + ex.subNo : '',
-      ex.subNo ? subTag(res, ex.subNo) : '', 'NOT FOUND in tracking (live Site + item)', '']));
+      ex.subNo ? subTag(res, ex.subNo) : '', 'NOT FOUND in tracking (live Site + item)', '', ex.cert, '']));
     ws.eachRow((r, n) => { if (n > 1 && /NOT FOUND/.test(str(r.getCell(9).value))) r.eachCell(c => { c.fill = fill('FFFFC7CE'); }); });
   }
-  ws.autoFilter = 'A1:J' + ws.rowCount;
+  ws.autoFilter = 'A1:L' + ws.rowCount;
   return ws;
 }
 

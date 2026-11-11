@@ -724,7 +724,8 @@ function tagTest(tag) {
 }
 
 // Rows already in the TSR file (PO Break Down) → tracking tasks.
-// Site + item key; Certificate # preferred, then a task tagged with this TSR.
+// Site + item key; Certificate # preferred, then a task tagged with this TSR,
+// then Done, same Facing, with a FAC date.
 // Returns { inTsr: Map(task → submission #), pairs: [{ ex, task }], unmatched: [ex] }
 function matchExisting(tsr, tasks, tag) {
   const inTsr = new Map(), pairs = [], unmatched = [];
@@ -739,8 +740,13 @@ function matchExisting(tsr, tasks, tag) {
   for (const ex of tsr.existing) {
     const cands = (bySiteItem.get(ex.site + '|' + ex.key) || []).filter(t => !inTsr.has(t));
     if (!cands.length) { unmatched.push(ex); continue; }
-    cands.sort((a, b) => (certOf(b.cert) === ex.cert) - (certOf(a.cert) === ex.cert) ||
-                         (!!tg && b.sub.startsWith(tg)) - (!!tg && a.sub.startsWith(tg)));
+    // Certificate #, then this TSR's tag, then a Done task, same Facing, with a FAC date
+    // (an old Assigned duplicate of the same Site + item must not take the row)
+    const score = t => [certOf(t.cert) === ex.cert, !!tg && t.sub.startsWith(tg), t.status === 'done',
+                        !!ex.facing && t.facing === ex.facing, !!t.fac];
+    cands.sort((a, b) => { const sa = score(a), sb = score(b);
+      for (let i = 0; i < sa.length; i++) if (sa[i] !== sb[i]) return sb[i] - sa[i];
+      return 0; });
     inTsr.set(cands[0], ex.subNo);
     pairs.push({ ex, task: cands[0] });
   }
