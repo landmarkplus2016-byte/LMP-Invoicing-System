@@ -20,6 +20,7 @@ All logic lives in the files below, loaded by `index.html` as plain `<script>` t
 | `tsr-order-app.js` | TSR Sub Order — lists one TSR Sub#'s tasks in acceptance-mail order, capped by TSR qty, up to a target amount |
 | `tsr-core.js` | Shared TSR rules (`window.TSRCore`) — matching keys, distance bands, week parsing, mail reading, tracking + TSR file readers. Must load before `tsr-planner-app.js` |
 | `tsr-planner-app.js` | TSR Planner — readiness check of every Site + Job Code combo, oldest-first plan within the TSR Remaining, paste-ready blocks for the protected PO Break Down sheet, receiving template, mail folders, allocation list |
+| `tsr-newpo-app.js` | TSR Planner › **Plan a New PO** — Request Form quantities for a new TSR / PO up to a budget, what stays in the current TSR, sent-task ID list. Uses the files loaded in the Planner (`window.TSRPlanner`); must load after `tsr-planner-app.js` |
 | `file-sources.js` | My Files — remembers file / folder locations (File System Access API, Chrome / Edge) and loads them into every tab with one **Load My Files** click; shares one parsed tracking workbook across tabs |
 | `contractor-app.js` | Contractor Invoices — four sub-tabs (2026 Tasks, Pre-2026 Tasks, TX-RX Tasks, POC Invoices), generates one styled XLSX per contractor |
 | `finance-app.js` | Finance Sheet — two sub-tabs (TX-RF Track, POC Tracking), filters by invoice numbers, exports styled XLSX |
@@ -402,6 +403,23 @@ Plans the **next submission of a TSR** straight from the master tracking. All el
 - **Receiving Template** (`Receiving Template LMP TSR <no> Sub-<n>.xlsx`) — LMP's layout (sheet `Receiving`, Aptos Narrow 11, header row 2 filled `#C0E6F5`, Grand Total row, `I = E*H`): one row per Receiving Template item with qty > 0; QTY = Σ effQty of the planned rows; **Line Row = 1 and PO unit price = 1** (the user's convention, confirmed); PO# from the setting.
 - **Mail Folders** (`TSR_<no>_Sub-<n>_Mails_<date>.zip`) — same as TSR Sub Order.
 
+### Shared helpers in `tsr-core.js` (Planner + New PO)
+
+`matchExisting(tsr, tasks, tag)` → `{ inTsr: Map(task → submission #), pairs: [{ex, task}], unmatched }` (Site + item key, Certificate # preferred, then a task tagged with this TSR). `tsrAvailable(tsr, pairs)` → `{ avail, pendingUse, pendingSubs }` (Remaining − rows of submissions not yet received). `tagTest(tag)` (TSR Sub# tagged with this TSR: `1326`, `1326 sub-2`, `check 1326`), `tsrSite(t)`. `readTsrFile` items also carry `rfRow`, `unit`, `matGroup`, `evo`, `pa`, `paItem`; tracking tasks carry `price` (`New Price`).
+
+### Plan a New PO (`tsr-newpo-app.js`, IDs `tnp-*`)
+
+A card under the Planner results. Needs only the tracking and the **newest TSR file** loaded in the Planner (no mails); the planner fires a `tsp-files` event after each file load and exposes `window.TSRPlanner = { trk, tsr }`. Input: **New PO budget** (default `11,990,000` = the 12M PO limit − 10K; accepts `11.99M`, `500K`). TSR # comes from the Planner's TSR # box.
+
+1. **Sent** — tasks matched to rows of the TSR file (`matchExisting`); PO status rules as the Planner (`ok` + this TSR's tag or no tag = not sent). Tasks tagged with another TSR (not submitted) are excluded and listed.
+2. **Combos** (Job Code + Site) of the remaining live tasks; **TOC lines (EX01/EX02, TOC status/week) ride with their combo** and only need to be Done. USO combos are skipped. Priority `tier`: **1** all Done + FAC + week, **2** all Done + FAC, **3** all Done, **4** some line not Done but a Done line anywhere in the combo (sent or not) — the open lines go with it; **0** nothing Done → *Not started*, left out. Split combos (part already sent / in another TSR) are included by their tier and noted. Order: tier → acceptance week → earliest FAC → earliest task date → first row.
+3. **Stays in the current TSR** — combos with a task in the TSR file or tagged with this TSR, any tier, oldest first: stay if every item is on its Request Form and fits `tsrAvailable` (exact qty); otherwise **Moved** into the new-PO pool.
+4. **New PO** — the rest, greedy in order, whole combos; a combo that would pass the budget is skipped (**Over budget**) and the loop continues. Qty per task = Absolute Qty × distance factor (VF site list in the TSR, else tracking, else 1.0 flagged). Request Form quantities are whole numbers, so the budget is checked on Σ ceil(qty per item) × TSR unit price. Items not on the TSR price list use the tracking price (`New Price`, else New Total ÷ qty) and are flagged red.
+
+**Exports:** **New PO File** (`New_PO_Request_<date>.xlsx`) — `Request Form` (every TSR item in Request Form order with Material Group / EVO / PA / PA Item, Qty rounded up, Unit, Unit price, Total formula, Exact Qty, Tasks; non-catalogue items appended red; Grand Total, Budget, Left), `New PO Tasks` (ID# first, write `New PO` in the tracking), `Stays in TSR <no>`, `Qty Check TSR <no>`, `Sent in TSR <no>`, `Over Budget`, `Not Started`, `In Another TSR`, `USO (excluded)`. **Sent Tasks (ID list)** (`TSR_<no>_Sent_Tasks_<date>.xlsx`) — every TSR-file row matched to the tracking: ID#, tracking row, Site, item, TSR row, Submission, the TSR Sub# to write (`1326 sub-2`), the value in the tracking now, `Update?` = Yes (yellow) when they differ; unmatched TSR rows listed in red at the end.
+
+Note: the tracking `New Total` is priced lower than the TSR price list for some items (e.g. TX13 4,400 vs 5,000); the budget uses the **TSR** unit prices, which is what the Request Form totals.
+
 ### Verified against TSR 1326 (Nov 2026)
 
 Pasting the blocks into a copy of the real TSR and evaluating VF's lookups: every price and distance lookup resolved and the grey previews equalled the TSR results; receiving quantities equalled the quantities the TSR computes; Activity Dates matched the tracking in both UTC and Africa/Cairo.
@@ -612,4 +630,4 @@ The `formatDate()` function remains in the codebase but is no longer used for Ex
 
 ## Service Worker Cache
 
-When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v24` → `lmp-invoicing-v25`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v51`.
+When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v24` → `lmp-invoicing-v25`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v53`.

@@ -527,6 +527,44 @@
             <div id="tsp-blocked-wrap"></div>
           </section>
 
+          <!-- New PO: plan the Request Form of a new TSR / PO (tsr-newpo-app.js) -->
+          <section id="tnp-card" class="card">
+            <h2>&#128230; Plan a New PO</h2>
+            <div id="tnp-error" role="alert" class="con-error-msg" style="display:none"></div>
+            <p class="card-hint" style="margin-top:0;">
+              Uses the <strong>Task Tracking</strong> file and the <strong>newest TSR file</strong> loaded above (no mails needed).
+              Tasks already in the TSR file are <em>sent</em>. Combos tagged with this TSR (or split from it) <strong>stay in it</strong>
+              if they fit its free quantity, otherwise they move to the new PO. Every other open <strong>Site + Job Code</strong> combo is ranked
+              &mdash; 1&nbsp;all Done + FAC + week, 2&nbsp;all Done + FAC, 3&nbsp;all Done, 4&nbsp;partly Done (its open lines go with it) &mdash;
+              oldest first, whole combos, up to the budget. TOC lines go with their combo; combos with nothing Done are left out.
+            </p>
+            <div class="acc-controls tsp-controls">
+              <div class="acc-control">
+                <label for="tnp-budget">New PO budget (EGP)</label>
+                <input type="text" id="tnp-budget" class="acc-input" placeholder="11,990,000" />
+              </div>
+              <button id="tnp-btn-run" class="btn-primary" disabled>&#128230;&nbsp; Plan New PO</button>
+            </div>
+            <p class="tso-amount-hint"><span id="tnp-hint"></span></p>
+          </section>
+
+          <section id="tnp-results" class="card" style="display:none">
+            <div class="tso-results-head">
+              <h2>New PO Plan</h2>
+              <div class="tso-actions">
+                <button id="tnp-btn-export" class="btn btn-success" disabled title="Request Form quantities + task lists + checks">&#8659; New PO File</button>
+                <button id="tnp-btn-sent" class="btn btn-success" disabled title="Tasks already in the TSR file, ID# first, for VLOOKUP in the tracking">&#8659; Sent Tasks (ID list)</button>
+              </div>
+            </div>
+            <p id="tnp-export-status" class="con-export-status"></p>
+            <div id="tnp-summary"></div>
+            <div id="tnp-tier-wrap"></div>
+            <div id="tnp-rf-wrap"></div>
+            <div id="tnp-planned-wrap"></div>
+            <div id="tnp-stays-wrap"></div>
+            <div id="tnp-over-wrap"></div>
+          </section>
+
         </main>
       </div>
 
@@ -1168,6 +1206,7 @@
   <script src="tsr-order-app.js"></script>
   <script src="tsr-core.js"></script>
   <script src="tsr-planner-app.js"></script>
+  <script src="tsr-newpo-app.js"></script>
   <script src="contractor-app.js"></script>
   <script src="finance-app.js"></script>
   <script src="acceptance-check-app.js"></script>

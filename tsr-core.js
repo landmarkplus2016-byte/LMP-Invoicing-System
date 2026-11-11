@@ -454,7 +454,7 @@ function readTracking(wb) {
       distanceRaw: str(get(row, 'distance')), factor,
       abs, qty: abs * (factor ?? 1),
       item, key: itemKey(item), code: itemCode(item),
-      total: Number(get(row, 'total')) || 0,
+      total: Number(get(row, 'total')) || 0, price: Number(get(row, 'price')) || 0,
       comments: str(get(row, 'comments')),
       statusRaw: str(get(row, 'status')), status: sc,
       taskDate: get(row, 'taskDate'), prq: get(row, 'prq'),
@@ -486,14 +486,21 @@ function readTsrFile(wb, fileName) {
     if ((rfRows[i] || []).some(c => str(c).toLowerCase().includes('item description'))) hdr = i;
   }
   if (hdr < 0) throw new Error('TSR file: "Item Description" header not found on Request Form - VF.');
-  let cItem = -1, cQty = -1, cPrice = -1, cRem = -1;
+  let cItem = -1, cQty = -1, cPrice = -1, cRem = -1, cUnit = -1, cMat = -1, cEvo = -1, cPa = -1, cPaItem = -1;
   (rfRows[hdr] || []).forEach((cell, c) => {
     const t = str(cell).toLowerCase();
     if (cItem  < 0 && t.includes('item description'))                  cItem  = c;
     if (cQty   < 0 && t === 'qty')                                     cQty   = c;
     if (cPrice < 0 && t.includes('unit price'))                        cPrice = c;
     if (cRem   < 0 && t.includes('remaining') && !t.includes('after')) cRem   = c;
+    if (cUnit  < 0 && t === 'unit')                                    cUnit  = c;
+    if (cMat   < 0 && t.includes('material group'))                    cMat   = c;
+    if (cEvo   < 0 && t.includes('evo'))                               cEvo   = c;
+    if (cPa    < 0 && t.includes('price agreement'))                   cPa    = c;
+    if (cPaItem < 0 && t.includes('pa item'))                          cPaItem = c;
   });
+  out.rfCol = { item: cItem, qty: cQty, price: cPrice, remaining: cRem, unit: cUnit };
+  out.rfHeaderRow = hdr + 1;
   if (cRem < 0) { cRem = 50; out.warnings.push('Request Form: "Remaining" header not found — column AY used.'); }
   out.items = [];
   for (let i = hdr + 1; i < rfRows.length; i++) {
@@ -505,7 +512,13 @@ function readTsrFile(wb, fileName) {
       key: itemKey(raw), code: itemCode(raw),
       qty: Number(row[cQty]) || 0,
       price: Number(row[cPrice]) || 0,
-      remaining: Number(row[cRem]) || 0
+      remaining: Number(row[cRem]) || 0,
+      rfRow: i + 1,                 // Excel row on Request Form - VF
+      unit: cUnit >= 0 ? str(row[cUnit]) : '',
+      matGroup: cMat >= 0 ? str(row[cMat]) : '',
+      evo: cEvo >= 0 ? str(row[cEvo]).replace(/\.0+$/, '') : '',
+      pa: cPa >= 0 ? str(row[cPa]).replace(/\.0+$/, '') : '',
+      paItem: cPaItem >= 0 ? str(row[cPaItem]).replace(/\.0+$/, '') : ''
     });
   }
   // Req Form # — cell right of a "Req Form#" label
@@ -694,6 +707,67 @@ function tsrItemFor(tsr, task) {
          tsr.items.find(it => it.key === task.key) || null;
 }
 
+// Site ID as written into the TSR. Numeric IDs must be numbers: VLOOKUP never
+// matches text "3618" to the number 3618 in VF's site list.
+function tsrSite(t) {
+  const s = str(t.siteRaw);
+  return typeof t.siteRaw === 'number' ? t.siteRaw : (/^\d+$/.test(s) ? Number(s) : s);
+}
+
+// Test "is this task tagged with TSR <tag>" on the tracking TSR Sub# column:
+// "1326", "1326 sub-2", "check 1326" → true; "11326" → false.
+function tagTest(tag) {
+  const t = str(tag).toLowerCase();
+  if (!t) return () => false;
+  const re = new RegExp('(^|\\D)' + t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(\\D|$)');
+  return task => re.test(task.sub);
+}
+
+// Rows already in the TSR file (PO Break Down) → tracking tasks.
+// Site + item key; Certificate # preferred, then a task tagged with this TSR.
+// Returns { inTsr: Map(task → submission #), pairs: [{ ex, task }], unmatched: [ex] }
+function matchExisting(tsr, tasks, tag) {
+  const inTsr = new Map(), pairs = [], unmatched = [];
+  const bySiteItem = new Map();
+  for (const t of tasks) {
+    const k = t.site + '|' + t.key;
+    if (!bySiteItem.has(k)) bySiteItem.set(k, []);
+    bySiteItem.get(k).push(t);
+  }
+  const certOf = v => str(v).replace(/\.0+$/, '');
+  const tg = str(tag).toLowerCase();
+  for (const ex of tsr.existing) {
+    const cands = (bySiteItem.get(ex.site + '|' + ex.key) || []).filter(t => !inTsr.has(t));
+    if (!cands.length) { unmatched.push(ex); continue; }
+    cands.sort((a, b) => (certOf(b.cert) === ex.cert) - (certOf(a.cert) === ex.cert) ||
+                         (!!tg && b.sub.startsWith(tg)) - (!!tg && a.sub.startsWith(tg)));
+    inTsr.set(cands[0], ex.subNo);
+    pairs.push({ ex, task: cands[0] });
+  }
+  return { inTsr, pairs, unmatched };
+}
+
+// Quantity still free on the Request Form. Remaining only drops when VF
+// receives a submission, so rows of submissions in the file that are not
+// received yet are deducted (Qty × the Distance the TSR shows, else the
+// matched task's tracking distance, else 1).
+// Returns { avail: Map(item name → qty), pendingUse: Map, pendingSubs: [n] }
+function tsrAvailable(tsr, pairs) {
+  const taskOf = new Map(pairs.map(p => [p.ex, p.task]));
+  const pendingUse = new Map(), pendingSubs = new Set();
+  for (const ex of tsr.existing) {
+    if (!ex.subNo || tsr.receivedSubs.has(ex.subNo)) continue;
+    const item = tsr.items.find(it => it.code === ex.code) || tsr.items.find(it => it.key === ex.key);
+    if (!item) continue;
+    const task = taskOf.get(ex);
+    const f = ex.factor ?? (task && task.factor) ?? 1;
+    pendingUse.set(item.name, (pendingUse.get(item.name) || 0) + ex.qty * f);
+    pendingSubs.add(ex.subNo);
+  }
+  const avail = new Map(tsr.items.map(it => [it.name, it.remaining - (pendingUse.get(it.name) || 0)]));
+  return { avail, pendingUse, pendingSubs: [...pendingSubs].sort((a, b) => a - b) };
+}
+
 // ---------------------------------------------------------------------------
 // Downloads
 // ---------------------------------------------------------------------------
@@ -737,6 +811,7 @@ window.TSRCore = {
   sheetRows, cellV, siteKey, itemCode, itemKey, subKey, ITEM_ALIASES, ITEM_GROUPS,
   statusClass, distanceFactor, DISTANCE_BANDS, parseTrackingWeek, weekSortKey, parseMailWeeks,
   detectArea, AREA_LABEL, AREA_ORDER, buildMailList, mailsFor, parseMailFile, mailFixes,
-  readTracking, readTsrFile, tsrItemFor, siteListKey, getJsZip, downloadBlob, excelDate
+  readTracking, readTsrFile, tsrItemFor, siteListKey, getJsZip, downloadBlob, excelDate,
+  tsrSite, tagTest, matchExisting, tsrAvailable
 };
 })();

@@ -75,6 +75,7 @@ function wireFilePicker(btnId, inputId, cardId, nameId, progressId, onLoad) {
     } finally {
       showProgress(progressId, false);
       checkReady();
+      document.dispatchEvent(new CustomEvent('tsp-files'));   // tells the New PO section
     }
   });
 }
@@ -194,28 +195,14 @@ async function runPlan() {
   const live  = _trk.tasks.filter(t => t.status !== 'dead');
 
   // ── 1. Tasks already in this TSR file (earlier submissions) ──────────────
-  const inTsr = new Map();   // task → submission #
-  const bySiteItem = new Map();
-  for (const t of live) {
-    const k = t.site + '|' + t.key;
-    if (!bySiteItem.has(k)) bySiteItem.set(k, []);
-    bySiteItem.get(k).push(t);
-  }
+  const { inTsr, pairs } = C.matchExisting(tsr, live, tag);   // task → submission #
   const certOf = v => str(v).replace(/\.0+$/, '');
-  for (const ex of tsr.existing) {
-    const cands = (bySiteItem.get(ex.site + '|' + ex.key) || []).filter(t => !inTsr.has(t));
-    if (!cands.length) continue;
-    cands.sort((a, b) => (certOf(b.cert) === ex.cert) - (certOf(a.cert) === ex.cert) ||
-                         (b.sub.startsWith(tag)) - (a.sub.startsWith(tag)));
-    inTsr.set(cands[0], ex.subNo);
-  }
   // For THIS TSR the loaded TSR file is the truth. PO status "ok" means "picked
   // for a submission, not received yet": if the task is tagged with this TSR #
   // ("1326", "1326 sub-2", "check 1326") or not tagged at all and it is not in
   // the file, it has not been submitted here yet, so it stays available.
   // "Received", "REJ", other PO statuses and other TSRs' tags still exclude it.
-  const tagRe     = tag ? new RegExp('(^|\\D)' + tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(\\D|$)') : null;
-  const myTagged  = t => !!tagRe && tagRe.test(t.sub);
+  const myTagged  = C.tagTest(tag);
   const openOk    = t => /^ok$/i.test(t.poStatus) && (myTagged(t) || !t.sub);
   const submitted = t => inTsr.has(t) || (!!t.poStatus && !openOk(t));
   const otherTsr  = t => !submitted(t) && t.sub && !myTagged(t);
@@ -304,23 +291,7 @@ async function runPlan() {
   // ── 4. Oldest first, whole combos, within the TSR Remaining ──────────────
   // Remaining on the Request Form only drops when VF receives a submission, so
   // rows of submissions already in the file but not yet received are deducted.
-  const pendingUse = new Map();   // TSR item name → qty sent, not yet received
-  const pendingSubs = new Set();
-  const exTask = new Map();       // existing TSR row → matched tracking task
-  for (const [task, sub] of inTsr) {
-    const ex = tsr.existing.find(e => e.subNo === sub && e.site === task.site && e.key === task.key && !exTask.has(e));
-    if (ex) exTask.set(ex, task);
-  }
-  for (const ex of tsr.existing) {
-    if (!ex.subNo || tsr.receivedSubs.has(ex.subNo)) continue;
-    const item = tsr.items.find(it => it.code === ex.code) || tsr.items.find(it => it.key === ex.key);
-    if (!item) continue;
-    const task = exTask.get(ex);
-    const f = ex.factor ?? (task && task.factor) ?? 1;   // K as the TSR shows it, else the tracking
-    pendingUse.set(item.name, (pendingUse.get(item.name) || 0) + ex.qty * f);
-    pendingSubs.add(ex.subNo);
-  }
-  const avail = new Map(tsr.items.map(it => [it.name, it.remaining - (pendingUse.get(it.name) || 0)]));
+  const { avail, pendingUse, pendingSubs } = C.tsrAvailable(tsr, pairs);
   const ready = list.filter(c => !c.reasons.length);
   const planned = [], waiting = [];
   for (const c of ready) {
@@ -353,17 +324,12 @@ async function runPlan() {
     subDate: el('tsp-date').value ? new Date(el('tsp-date').value + 'T00:00:00') : null,
     poNo: str(el('tsp-po').value),
     list, ready, planned, waiting, blocked, pending, tocTasks, rows, folders, avail,
-    pendingUse, pendingSubs: [...pendingSubs].sort((a, b) => a - b),
+    pendingUse, pendingSubs,
     total: rows.reduce((s, r) => s + r.t.total, 0)
   };
 }
 
-// Site ID as written into the TSR. Numeric IDs must be numbers: VLOOKUP never
-// matches text "3618" to the number 3618 in VF's site list.
-function tsrSite(t) {
-  const s = str(t.siteRaw);
-  return typeof t.siteRaw === 'number' ? t.siteRaw : (/^\d+$/.test(s) ? Number(s) : s);
-}
+const tsrSite = C.tsrSite;
 
 // Paste values for one planned row (TSR column letter → value)
 function pasteRow(r, res) {
@@ -708,6 +674,9 @@ async function exportFolders() {
   C.downloadBlob(blob, name);
   setStatus('✅ Downloaded ' + name + ' — folders 1–' + res.folders.length + ', one mail each.');
 }
+
+// Shared with the New PO section (tsr-newpo-app.js): the loaded files
+window.TSRPlanner = { get trk() { return _trk; }, get tsr() { return _tsr; } };
 
 // Exposed for testing in a headless browser
 window.__tspDebug = { get result() { return _result; }, get tsr() { return _tsr; }, get trk() { return _trk; }, pasteRow };
