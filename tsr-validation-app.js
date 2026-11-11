@@ -1302,7 +1302,7 @@ function renderResults(subNum, totalRows, folderResults, colInfo, qtyCheck) {
   const allRows   = folderResults.flatMap(f => f.rows);
   const passCount = allRows.filter(r => r.status === 'pass').length;
   const failCount = allRows.filter(r => r.status !== 'pass').length;
-  const qtyFail   = qtyCheck && qtyCheck.items ? qtyCheck.items.filter(i => i.status !== 'pass').length : 0;
+  const qtyFail   = qtyCheck && qtyCheck.items ? qtyCheck.items.filter(i => i.status === 'fail').length : 0;
   const allOk     = failCount === 0 && qtyFail === 0;
 
   const summaryHtml = `
