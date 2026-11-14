@@ -737,7 +737,19 @@ function matchExisting(tsr, tasks, tag) {
   }
   const certOf = v => str(v).replace(/\.0+$/, '');
   const tg = str(tag).toLowerCase();
+  // Pass 1: exact Certificate # matches, so a row with another certificate
+  // cannot take the task that belongs to a later row (D3577 TX13 in 1326 Sub-1)
+  const certPass = new Set();
   for (const ex of tsr.existing) {
+    if (!ex.cert) continue;
+    const c = (bySiteItem.get(ex.site + '|' + ex.key) || []).filter(t => !inTsr.has(t) && certOf(t.cert) === ex.cert);
+    if (!c.length) continue;
+    c.sort((a, b) => (b.status === 'done') - (a.status === 'done') || (!!tg && b.sub.startsWith(tg)) - (!!tg && a.sub.startsWith(tg)));
+    inTsr.set(c[0], ex.subNo); pairs.push({ ex, task: c[0] }); certPass.add(ex);
+  }
+  // Pass 2: the rest
+  for (const ex of tsr.existing) {
+    if (certPass.has(ex)) continue;
     const cands = (bySiteItem.get(ex.site + '|' + ex.key) || []).filter(t => !inTsr.has(t));
     if (!cands.length) { unmatched.push(ex); continue; }
     // Certificate #, then this TSR's tag, then a Done task, same Facing, with a FAC date
@@ -750,6 +762,7 @@ function matchExisting(tsr, tasks, tag) {
     inTsr.set(cands[0], ex.subNo);
     pairs.push({ ex, task: cands[0] });
   }
+  pairs.sort((a, b) => a.ex.excelRow - b.ex.excelRow);
   return { inTsr, pairs, unmatched };
 }
 

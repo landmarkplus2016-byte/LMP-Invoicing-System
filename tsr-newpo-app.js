@@ -126,7 +126,9 @@ function runNewPo(trk, tsr, tsrNo, budget) {
   const myTagged  = C.tagTest(tag);
   // PO status "ok" = picked for a submission, not received; for this TSR the
   // TSR file is the truth (same rule as the Planner)
-  const openOk    = t => /^ok$/i.test(t.poStatus) && (myTagged(t) || !t.sub);
+  // A task tagged with this TSR is sent only if its row is in the TSR file
+  // (PO status ok / sent / to be sent is not enough); Received still counts.
+  const openOk    = t => (myTagged(t) && !/received/i.test(t.poStatus)) || (/^ok$/i.test(t.poStatus) && !t.sub);
   const submitted = t => inTsr.has(t) || (!!t.poStatus && !openOk(t));
   const otherTsr  = t => !submitted(t) && !!t.sub && !myTagged(t);
 
@@ -141,6 +143,7 @@ function runNewPo(trk, tsr, tsrNo, budget) {
   for (const c of combos.values()) {
     c.tasks = c.all.filter(t => !submitted(t) && !otherTsr(t));
     c.otherTasks = c.all.filter(otherTsr);
+    c.falseSent = c.tasks.filter(t => myTagged(t) && t.poStatus && !/^ok$/i.test(t.poStatus));
     if (c.otherTasks.length) other.push(c);
     if (!c.tasks.length) continue;
     if (c.all.some(isUso)) { uso.push(c); continue; }
@@ -169,6 +172,7 @@ function runNewPo(trk, tsr, tsrNo, budget) {
         inTsr.has(t) ? 'TSR ' + tsrNo + ' Submission #' + inTsr.get(t) : (t.subRaw || t.poStatus)))];
       c.notes.push('Split — other lines: ' + parts.join(', '));
     }
+    if (c.falseSent.length) c.notes.push('Tracking says ' + c.falseSent[0].subRaw + ' / ' + c.falseSent[0].poStatus + ' but not in the TSR ' + tsrNo + ' file: rows ' + c.falseSent.map(t => t.excelRow).join(', '));
     if (c.tasks.some(isToc)) c.notes.push('TOC line(s): ' + [...new Set(c.tasks.filter(isToc).map(t => t.code))].join(', '));
     const unk = c.tasks.filter(t => t.np.distSrc.startsWith('unknown'));
     if (unk.length) c.notes.push('Distance unknown for ' + unk.map(t => t.code).join(', ') + ' (factor 1.0 used)');
