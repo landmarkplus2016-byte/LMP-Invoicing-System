@@ -590,6 +590,36 @@
             </button>
           </div>
 
+          <!-- ── Deductions (shared by all four sub-tabs) ─────────────── -->
+          <section class="card con-ded-card">
+            <h2>Deductions <span class="con-ded-optional">(optional)</span></h2>
+            <p class="card-hint">For every contractor file, the <em>Deduction</em> sheet is filled with the expense rows of the draft's
+              Site ID + Job Code combos (Analysis Tool › <em>Total Expense</em>), minus the rows already in the ledger
+              (Invoice-Deductions › <em>Deduction</em>). Same columns as the ledger, so the rows can be pasted straight into it.
+              Yellow rows need a check (another contractor on the same site / job code). Your Excel files are only read, never changed.</p>
+            <div id="con-ded-error" role="alert" class="con-error-msg" style="display:none"></div>
+            <div class="file-cards">
+              <div id="card-con-ded-exp" class="file-card">
+                <div class="file-icon">&#128184;</div>
+                <div class="file-label">Expenses — Analysis Tool 2026 (.xlsm)</div>
+                <button id="btn-pick-con-ded-exp" class="btn-secondary">Browse File</button>
+                <input type="file" id="con-ded-exp-input" accept=".xlsm,.xlsx,.xlsb" style="display:none" />
+                <span id="con-ded-exp-filename" class="filename-display">No file selected</span>
+                <div id="con-ded-exp-progress" class="file-progress" style="display:none"></div>
+              </div>
+              <div id="card-con-ded-led" class="file-card">
+                <div class="file-icon">&#128210;</div>
+                <div class="file-label">Already deducted — Invoice-Deductions 2026 (.xlsm)</div>
+                <button id="btn-pick-con-ded-led" class="btn-secondary">Browse File</button>
+                <input type="file" id="con-ded-led-input" accept=".xlsm,.xlsx,.xlsb" style="display:none" />
+                <span id="con-ded-led-filename" class="filename-display">No file selected</span>
+                <div id="con-ded-led-progress" class="file-progress" style="display:none"></div>
+              </div>
+            </div>
+            <p id="con-ded-status" class="con-ded-status"></p>
+            <div id="con-ded-cats" class="con-ded-cats" style="display:none"></div>
+          </section>
+
           <!-- ── SUB-PANEL: 2026 Tasks ──────────────────────────────── -->
           <div id="con-subpanel-2026" class="con-subpanel">
 
@@ -1207,6 +1237,7 @@
   <script src="tsr-core.js"></script>
   <script src="tsr-planner-app.js"></script>
   <script src="tsr-newpo-app.js"></script>
+  <script src="contractor-deductions.js"></script>
   <script src="contractor-app.js"></script>
   <script src="finance-app.js"></script>
   <script src="acceptance-check-app.js"></script>

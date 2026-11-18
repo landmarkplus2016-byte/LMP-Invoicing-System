@@ -14,6 +14,7 @@ const CONTRACTOR_LIST = ['Connect', 'DAM Tel', 'El-Khayal', 'New Plan', 'Upper T
 // ---------------------------------------------------------------------------
 let _wb     = null;   // loaded workbook
 let _groups = null;   // Map<contractorName, row[]>
+let _owners2026 = null; // Map<SiteID|JobCode, Set<contractor>> — every tracking row, In-House included
 
 // ---------------------------------------------------------------------------
 // Name normalisation — Levenshtein-based fuzzy match to canonical list
@@ -45,6 +46,15 @@ function normalizeContractor(raw) {
   // Accept match if within threshold (40% of canonical name length, min 3)
   const threshold = Math.max(3, Math.floor((best?.length ?? 4) * 0.4));
   return bestDist <= threshold ? best : s;
+}
+
+// Who worked on each Site ID + Job Code (for the deduction contractor check)
+function addOwner(map, site, jc, contractor) {
+  if (!window.ConDeductions || !contractor) return;
+  if (!String(site ?? '').trim() || !String(jc ?? '').trim()) return;
+  const k = ConDeductions.comboKey(site, jc);
+  if (!map.has(k)) map.set(k, new Set());
+  map.get(k).add(contractor);
 }
 
 // ---------------------------------------------------------------------------
@@ -141,6 +151,10 @@ function analyzeContractors() {
   function notBlank(v) { return v != null && String(v).trim() !== ''; }
 
   const groups = new Map();
+  _owners2026 = new Map();
+  for (const row of dataRows) {
+    if (cSite >= 0 && cJob >= 0) addOwner(_owners2026, row[cSite], row[cJob], normalizeContractor(row[cContractor]));
+  }
 
   for (const row of dataRows) {
     if (rowYear(row[cTaskDate]) < 2026) continue;
@@ -173,14 +187,7 @@ function analyzeContractors() {
 // Render summary table
 // ---------------------------------------------------------------------------
 function renderSummary(groups) {
-  let html = '', grandTotal = 0;
-  for (const [name, rows] of groups) {
-    const amt = sumPrices(rows);
-    grandTotal += amt;
-    html += `<tr><td>${esc(name)}</td><td class="num">${fmtPrice(amt)}</td></tr>`;
-  }
-  html += `<tr class="totals-row"><td><strong>Total</strong></td><td class="num"><strong>${fmtPrice(grandTotal)}</strong></td></tr>`;
-  document.getElementById('con-summary-tbody').innerHTML = html;
+  document.getElementById('con-summary-tbody').innerHTML = summaryTableHtml('con-summary-tbody', groups, _owners2026);
   const statusEl = document.getElementById('con-export-status');
   statusEl.textContent = '';
   statusEl.className = '';
@@ -200,7 +207,7 @@ document.getElementById('btn-export-con').addEventListener('click', async () => 
   try {
     let done = 0;
     for (const [name, rows] of _groups) {
-      await buildAndDownload(name, rows);
+      await buildAndDownload(name, rows, _owners2026);
       done++;
       statusEl.textContent = `Exporting… ${done} / ${_groups.size}`;
       await new Promise(r => setTimeout(r, 500)); // brief pause between downloads
@@ -222,6 +229,7 @@ const FILL_BLUE  = fill('FF9BC2E6');  // header / title — light steel blue
 const FILL_PEACH = fill('FFF8CBAD');  // first row of each Job Code group
 const FILL_WHITE = fill('FFFFFFFF');  // subsequent rows in a group
 const FILL_GREEN = fill('FF00FF00');  // total row
+const FILL_DED   = fill('FFFFC7CE');  // deductions row (light red)
 const THIN       = { style: 'thin', color: { argb: 'FF000000' } };
 const ALL_THIN   = { top: THIN, left: THIN, bottom: THIN, right: THIN };
 
@@ -254,11 +262,17 @@ function sumPrices(rows) {
 // ---------------------------------------------------------------------------
 // Build workbook and trigger browser download
 // ---------------------------------------------------------------------------
-async function buildAndDownload(name, rows) {
+async function buildAndDownload(name, rows, owners) {
   const wb = new ExcelJS.Workbook();
   wb.creator = 'LMP Invoicing System';
-  addDraftSheet(wb, name, rows);
-  addDeductionSheet(wb, rows);
+  const ded = deductionsFor(name, rows, owners);
+  addDraftSheet(wb, name, rows, ded);
+  if (ded) {
+    const vfs = [...new Set(rows.map(r => String(r.vfInvoice ?? '').trim()).filter(Boolean))];
+    ConDeductions.writeSheet(wb, ded, { vfInv: vfs.length === 1 ? (isNaN(Number(vfs[0])) ? vfs[0] : Number(vfs[0])) : '' });
+  } else {
+    addDeductionSheet(wb, rows);
+  }
 
   const buf  = await wb.xlsx.writeBuffer();
   const blob = new Blob([buf], {
@@ -278,7 +292,7 @@ async function buildAndDownload(name, rows) {
 // "Draft" sheet — formatted to match Upper Telecom Draft.xlsx
 // Layout: cols B–F, title merged E3:F4, headers row 5, data row 6+, total at bottom
 // ---------------------------------------------------------------------------
-function addDraftSheet(wb, contractorName, rows) {
+function addDraftSheet(wb, contractorName, rows, ded) {
   const ws = wb.addWorksheet('Draft');
 
   // Column widths (A = narrow spacer so data begins at B)
@@ -322,6 +336,12 @@ function addDraftSheet(wb, contractorName, rows) {
   const totalRowNum = 6 + rows.length;
   const total       = sumPrices(rows);
   styleTotalRow(ws, totalRowNum, fmtPrice(total));
+
+  // Deductions + Net (only when the deductions were filled from the expenses file)
+  if (ded) {
+    styleTotalRow(ws, totalRowNum + 1, fmtPrice(-ded.total), 'Deductions', FILL_DED);
+    styleTotalRow(ws, totalRowNum + 2, fmtPrice(total - ded.total), 'Net', FILL_GREEN);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -380,18 +400,68 @@ function styleDataRow(ws, rowNum, values, rowFill, cols) {
   ws.getRow(rowNum).height = 14.4;
 }
 
-function styleTotalRow(ws, rowNum, totalStr) {
+function styleTotalRow(ws, rowNum, totalStr, label, rowFill) {
   DATA_COLS.forEach((col, i) => {
     const cell     = ws.getCell(`${col}${rowNum}`);
-    cell.fill      = FILL_GREEN;
+    cell.fill      = rowFill || FILL_GREEN;
     cell.font      = { bold: true, size: 11 };
     cell.border    = ALL_THIN;
     cell.alignment = { vertical: 'middle' };
-    if (i === 0) { cell.value = 'Total'; cell.alignment.horizontal = 'left';  }
+    if (i === 0) { cell.value = label || 'Total'; cell.alignment.horizontal = 'left';  }
     if (i === 4) { cell.value = totalStr; cell.alignment.horizontal = 'right'; }
   });
   ws.getRow(rowNum).height = 14.4;
 }
+
+// ---------------------------------------------------------------------------
+// Deductions (contractor-deductions.js) — shared by all four sub-tabs
+// ---------------------------------------------------------------------------
+function deductionsFor(name, rows, owners) {
+  if (!window.ConDeductions || !ConDeductions.ready()) return null;
+  return ConDeductions.compute(name, rows, { owners, normalize: normalizeContractor });
+}
+
+// Summary table body; also switches the table head to Invoice Amount |
+// Deductions | Net | details while an expenses file is loaded.
+function summaryTableHtml(tbodyId, groups, owners) {
+  const on = !!(window.ConDeductions && ConDeductions.ready());
+  const table = document.getElementById(tbodyId).closest('table');
+  const head = table && table.querySelector('thead tr');
+  if (head) {
+    head.innerHTML = '<th>Contractor</th><th style="width:160px; text-align:right;">Invoice Amount</th>' +
+      (on ? '<th style="width:150px; text-align:right;">Deductions</th><th style="width:160px; text-align:right;">Net</th>' +
+            '<th>Deduction details</th>' : '');
+  }
+  let html = '', gAmt = 0, gDed = 0;
+  for (const [name, rows] of groups) {
+    const amt = sumPrices(rows);
+    gAmt += amt;
+    if (!on) { html += `<tr><td>${esc(name)}</td><td class="num">${fmtPrice(amt)}</td></tr>`; continue; }
+    const d = deductionsFor(name, rows, owners);
+    gDed += d.total;
+    const notes = [`${d.deduct.length} new row(s) on ${d.combosWithExpenses} of ${d.combos} site / job codes`];
+    if (d.already.length) notes.push(`${d.already.length} already deducted (${fmtPrice(d.alreadyTotal)}) skipped`);
+    if (d.flagged) notes.push(`<span class="con-ded-flag">${d.flagged} to check</span>`);
+    if (d.catSkipped) notes.push(`${d.catSkipped} in unticked categories`);
+    html += `<tr><td>${esc(name)}</td><td class="num">${fmtPrice(amt)}</td>` +
+            `<td class="num">${fmtPrice(d.total)}</td><td class="num">${fmtPrice(amt - d.total)}</td>` +
+            `<td class="con-ded-note">${notes.join(' · ')}</td></tr>`;
+  }
+  if (html) {
+    html += `<tr class="totals-row"><td><strong>Total</strong></td><td class="num"><strong>${fmtPrice(gAmt)}</strong></td>` +
+            (on ? `<td class="num"><strong>${fmtPrice(gDed)}</strong></td><td class="num"><strong>${fmtPrice(gAmt - gDed)}</strong></td><td></td>` : '') +
+            `</tr>`;
+  }
+  return html;
+}
+
+// Re-draw every summary when the deduction files or ticked categories change
+document.addEventListener('con-ded-change', () => {
+  if (_groups)        renderSummary(_groups);
+  if (_allRows2)      renderCon2Summary(getCon2FilteredGroups());
+  if (_allRowsTxRx)   renderTxRxSummary(getTxRxFilteredGroups());
+  if (_allRowsPocCon) renderPocConSummary(getPocConFilteredGroups());
+});
 
 // ---------------------------------------------------------------------------
 // UI helpers
@@ -432,6 +502,7 @@ function esc(s) {
 
 let _wbPocCon      = null;
 let _allRowsPocCon = null;
+let _ownersPoc     = null;
 
 document.getElementById('btn-pick-con-poc-track').addEventListener('click', () => {
   document.getElementById('con-poc-track-input').click();
@@ -535,8 +606,11 @@ function extractPocConRows() {
   }
 
   const rows = [];
+  _ownersPoc = new Map();
   for (const row of dataRows) {
     const halfTotal = toNum(gv(row, 'total')) / 2;
+    addOwner(_ownersPoc, gv(row, 'siteId'), gv(row, 'jobCode'), normalizeContractor(gv(row, 'instCon')));
+    addOwner(_ownersPoc, gv(row, 'siteId'), gv(row, 'jobCode'), normalizeContractor(gv(row, 'migrCon')));
     const jobCode   = String(gv(row, 'jobCode')).trim();
     const siteId    = String(gv(row, 'siteId')).trim();
     const lineItem  = String(gv(row, 'lineItem')).trim();
@@ -625,19 +699,15 @@ function getPocConFilteredGroups() {
 }
 
 function renderPocConSummary(groups) {
-  let html = '', grandCon = 0, grandLmp = 0, grandTotal = 0, totalRows = 0;
+  let grandCon = 0, grandLmp = 0, grandTotal = 0, totalRows = 0;
   for (const [name, rows] of groups) {
     const amt  = sumPrices(rows);
     grandCon   += amt;
     grandLmp   += rows.reduce((s, r) => s + (typeof r.lmp     === 'number' ? r.lmp     : 0), 0);
     grandTotal += rows.reduce((s, r) => s + (typeof r.newTotal === 'number' ? r.newTotal : 0), 0);
     totalRows  += rows.length;
-    html += `<tr><td>${esc(name)}</td><td class="num">${fmtPrice(amt)}</td></tr>`;
   }
-  if (html) {
-    html += `<tr class="totals-row"><td><strong>Total</strong></td><td class="num"><strong>${fmtPrice(grandCon)}</strong></td></tr>`;
-  }
-  document.getElementById('con-poc-summary-tbody').innerHTML = html;
+  document.getElementById('con-poc-summary-tbody').innerHTML = summaryTableHtml('con-poc-summary-tbody', groups, _ownersPoc);
   document.getElementById('con-poc-stat-rows').textContent   = totalRows.toLocaleString();
   document.getElementById('con-poc-stat-total').textContent  = fmtPrice(grandTotal);
   document.getElementById('con-poc-stat-lmp').textContent    = fmtPrice(grandLmp);
@@ -659,7 +729,7 @@ document.getElementById('btn-export-con-poc').addEventListener('click', async ()
   try {
     let done = 0;
     for (const [name, rows] of groups) {
-      await buildAndDownload(name, rows);
+      await buildAndDownload(name, rows, _ownersPoc);
       done++;
       statusEl.textContent = `Exporting… ${done} / ${groups.size}`;
       await new Promise(r => setTimeout(r, 500));
@@ -699,6 +769,7 @@ function conPocFileProgress(on) {
 
 let _wb2      = null;
 let _allRows2 = null;  // all eligible rows (conInv blank, non-In-House)
+let _owners2   = null;
 
 // File picker
 document.getElementById('btn-pick-con2-track').addEventListener('click', () => {
@@ -776,7 +847,9 @@ function extractCon2Rows() {
   function notBlank(v) { return v != null && String(v).trim() !== ''; }
 
   const rows = [];
+  _owners2 = new Map();
   for (const row of dataRows) {
+    if (cSite >= 0 && cJob >= 0) addOwner(_owners2, row[cSite], row[cJob], normalizeContractor(row[cContractor]));
     if (notBlank(row[cConInv])) continue;  // skip already invoiced
 
     const norm = normalizeContractor(row[cContractor]);
@@ -845,17 +918,12 @@ function getCon2FilteredGroups() {
 }
 
 function renderCon2Summary(groups) {
-  let html = '', grandTotal = 0, totalRows = 0;
-  for (const [name, rows] of groups) {
-    const amt = sumPrices(rows);
-    grandTotal += amt;
+  let grandTotal = 0, totalRows = 0;
+  for (const [, rows] of groups) {
+    grandTotal += sumPrices(rows);
     totalRows  += rows.length;
-    html += `<tr><td>${esc(name)}</td><td class="num">${fmtPrice(amt)}</td></tr>`;
   }
-  if (html) {
-    html += `<tr class="totals-row"><td><strong>Total</strong></td><td class="num"><strong>${fmtPrice(grandTotal)}</strong></td></tr>`;
-  }
-  document.getElementById('con2-summary-tbody').innerHTML      = html;
+  document.getElementById('con2-summary-tbody').innerHTML      = summaryTableHtml('con2-summary-tbody', groups, _owners2);
   document.getElementById('con2-stat-rows').textContent        = totalRows.toLocaleString();
   document.getElementById('con2-stat-amount').textContent      = fmtPrice(grandTotal);
   document.getElementById('con2-stat-contractors').textContent = groups.size.toString();
@@ -876,7 +944,7 @@ document.getElementById('btn-export-con2').addEventListener('click', async () =>
   try {
     let done = 0;
     for (const [name, rows] of groups) {
-      await buildAndDownload(name, rows);
+      await buildAndDownload(name, rows, _owners2);
       done++;
       statusEl.textContent = `Exporting… ${done} / ${groups.size}`;
       await new Promise(r => setTimeout(r, 500));
@@ -920,6 +988,7 @@ function con2FileProgress(on) {
 
 let _wbTxRx      = null;
 let _allRowsTxRx = null;
+let _ownersTxRx  = null;
 
 document.getElementById('btn-pick-contxrx-track').addEventListener('click', () => {
   document.getElementById('contxrx-track-input').click();
@@ -993,8 +1062,10 @@ function extractTxRxRows() {
   if (cContractor2 < 0) throw new Error('Column "Contractor2" (contractor portion) not found.');
 
   const rows = [];
+  _ownersTxRx = new Map();
   for (const row of dataRows) {
     const norm = normalizeContractor(row[cContractor]);
+    if (cSite >= 0 && cJob >= 0) addOwner(_ownersTxRx, row[cSite], row[cJob], norm);
     if (!norm || norm === 'In-House') continue;
 
     rows.push({
@@ -1078,17 +1149,12 @@ function getTxRxFilteredGroups() {
 }
 
 function renderTxRxSummary(groups) {
-  let html = '', grandTotal = 0, totalRows = 0;
-  for (const [name, rows] of groups) {
-    const amt = sumPrices(rows);
-    grandTotal += amt;
+  let grandTotal = 0, totalRows = 0;
+  for (const [, rows] of groups) {
+    grandTotal += sumPrices(rows);
     totalRows  += rows.length;
-    html += `<tr><td>${esc(name)}</td><td class="num">${fmtPrice(amt)}</td></tr>`;
   }
-  if (html) {
-    html += `<tr class="totals-row"><td><strong>Total</strong></td><td class="num"><strong>${fmtPrice(grandTotal)}</strong></td></tr>`;
-  }
-  document.getElementById('contxrx-summary-tbody').innerHTML      = html;
+  document.getElementById('contxrx-summary-tbody').innerHTML      = summaryTableHtml('contxrx-summary-tbody', groups, _ownersTxRx);
   document.getElementById('contxrx-stat-rows').textContent        = totalRows.toLocaleString();
   document.getElementById('contxrx-stat-amount').textContent      = fmtPrice(grandTotal);
   document.getElementById('contxrx-stat-contractors').textContent = groups.size.toString();
@@ -1109,7 +1175,7 @@ document.getElementById('btn-export-contxrx').addEventListener('click', async ()
   try {
     let done = 0;
     for (const [name, rows] of groups) {
-      await buildAndDownload(name, rows);
+      await buildAndDownload(name, rows, _ownersTxRx);
       done++;
       statusEl.textContent = `Exporting… ${done} / ${groups.size}`;
       await new Promise(r => setTimeout(r, 500));

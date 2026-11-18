@@ -22,6 +22,7 @@ All logic lives in the files below, loaded by `index.html` as plain `<script>` t
 | `tsr-planner-app.js` | TSR Planner — readiness check of every Site + Job Code combo, oldest-first plan within the TSR Remaining, paste-ready blocks for the protected PO Break Down sheet, receiving template, mail folders, allocation list |
 | `tsr-newpo-app.js` | TSR Planner › **Plan a New PO** — Request Form quantities for a new TSR / PO up to a budget, what stays in the current TSR, sent-task ID list. Uses the files loaded in the Planner (`window.TSRPlanner`); must load after `tsr-planner-app.js` |
 | `file-sources.js` | My Files — remembers file / folder locations (File System Access API, Chrome / Edge) and loads them into every tab with one **Load My Files** click; shares one parsed tracking workbook across tabs |
+| `contractor-deductions.js` | Contractor Invoices › **Deductions** (`window.ConDeductions`) — fills each contractor file's Deduction sheet from the expenses file minus the deductions ledger. Must load before `contractor-app.js` |
 | `contractor-app.js` | Contractor Invoices — four sub-tabs (2026 Tasks, Pre-2026 Tasks, TX-RX Tasks, POC Invoices), generates one styled XLSX per contractor |
 | `finance-app.js` | Finance Sheet — two sub-tabs (TX-RF Track, POC Tracking), filters by invoice numbers, exports styled XLSX |
 | `acceptance-check-app.js` | Acceptance Check — compares tracking line items for one week + area against the acceptance sheet (`Total` tab) and lists mismatches |
@@ -81,6 +82,8 @@ A **My Files** tab (`panel-sources`, IDs `src-*`) plus a gold **⚡ Load My File
 | `mails` | folder | `tso-input-folder`, `tsp-input-folder` (via `folderdrop`) |
 | `accsheet` | file | `acc-input-acc` |
 | `poc` | file | `fileInput` (POC tab), `con-poc-track-input`, `poc-track-input` |
+| `expenses` | file | `con-ded-exp-input` (Analysis Tool 2026 › `Total Expense`) |
+| `dedledger` | file | `con-ded-led-input` (Invoice-Deductions 2026 › `Deduction`) |
 | `tsrroot` | folder | the selected TSR file → `tsr-input`, `tsrval-input-tsr`, `tso-input-tsr`, `tsp-input-tsr`; its Sub folder's **numbered** sub-folders → `tsrval-input-folder` |
 
 **TSR file choice** — `scanTsr()` lists every `.xlsb` up to `Root/<TSR#>/<Sub-n>/` (newest first) in `#src-tsr-select`; the choice is saved as `tsr:selected` (relative path), default = newest.
@@ -504,6 +507,18 @@ State: `_wbPocCon`, `_allRowsPocCon`. Entry point: `extractPocConRows()` → `po
   - **Total row at the bottom** (green `#00FF00`).
 - **Deduction sheet** — cols B–E: Job Code, Site ID, Facing, Deduction Amount (empty, for manual entry). No amount column.
 
+### Deductions (`contractor-deductions.js`, IDs `con-ded-*`)
+
+A shared **Deductions** card sits above the four sub-panels. Optional: without the expenses file the Deduction sheet stays the old blank manual-entry layout.
+
+- **Expenses** — `Analysis Tool 2026.xlsm` › `Total Expense` (header row found by `Site ID` + `Job Code` + `Cost…`; read with `sheets: ['Total Expense']`). Rows with blank site/job code or cost 0 are ignored. Indexed by `comboKey(site, jc)` — uppercase, spaces removed, all-digit site IDs lose leading zeros and compare as text (`90` = `"90"`).
+- **Ledger** — `Invoice-Deductions 2026.xlsm` › `Deduction` (rows already deducted; Contractor / VF INV / Contractor Invoice columns read for the report).
+- **Per contractor** (`compute`): combos of the draft rows → their expense rows in **ticked categories** → minus ledger rows, matched **row by row, count-aware**: pass 1 same date + combo + cost (2 dp) + category + sub category; pass 2 the same without the date (the ledger has mistyped dates such as 22-Dec-2026; on the real files 1,788 / 1,831 ledger rows match in pass 1).
+- **Categories** — checkboxes built from the expenses file; unticked ones saved in `localStorage` (`lmp-con-ded-cats-off`). **Trucks is unticked by default** (trucks are paid weekly now — Khaled, Nov 2026). The old note in the Analysis Tool's `Deductions lookup` sheet about D2844 / D2594 for Upper Telecom is a one-off and is deliberately not applied.
+- **Contractor check** — each sub-tab builds an owners map (combo → every normalised contractor in the whole tracking, In-House included; POC: INST + MIGR contractor). A row is flagged yellow ("Check" column) if the combo also has tasks of another contractor, or the expense row's own `Contractor` cell names another contractor. Flagged rows are still deducted — the user decides.
+- **Output** — Deduction sheet in the **ledger's column order** starting at column A (Date … Comment, Contractor, VF INV (filled when the contractor's rows share one VF Invoice #), Contractor Invoice, Old/New, concat) + `Check`, total row with a SUM formula; an **Already Deducted** sheet lists skipped rows with the ledger's contractor / VF INV / contractor invoice / row; the Draft sheet gets **Deductions** and **Net** rows under the Total. Summary tables switch to Invoice Amount | Deductions | Net | details while the expenses file is loaded; a `con-ded-change` event re-renders all four.
+- The 2026 ledger knows nothing about deductions made before 2026, so for old VF invoices expect "new" rows that were in fact deducted earlier.
+
 ### Column detection — Contractor2 vs Contractor
 
 `Contractor2` must be matched **before** `Contractor` in the header scan to avoid false matches:
@@ -630,4 +645,4 @@ The `formatDate()` function remains in the codebase but is no longer used for Ex
 
 ## Service Worker Cache
 
-When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v24` → `lmp-invoicing-v25`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v55`.
+When updating any cached file, bump the `CACHE` version string in `sw.js` (e.g. `lmp-invoicing-v24` → `lmp-invoicing-v25`). Without this, installed PWA users will continue running stale files. Current version: `lmp-invoicing-v56`.

@@ -30,6 +30,10 @@ const SOURCES = [
     usedBy: 'Acceptance Check', inputs: ['acc-input-acc'] },
   { id: 'poc', kind: 'file', label: 'POC3 Tracking File', hint: 'POC3 Tracking', sheets: ['POC3 Tracking'],
     usedBy: 'POC Invoice Prep · Contractor (POC) · Finance (POC)', inputs: ['fileInput', 'con-poc-track-input', 'poc-track-input'] },
+  { id: 'expenses', kind: 'file', label: 'Expenses (Analysis Tool)', hint: 'Analysis Tool 2026.xlsm', sheets: ['Total Expense'],
+    usedBy: 'Contractor Invoices — Deductions', inputs: ['con-ded-exp-input'] },
+  { id: 'dedledger', kind: 'file', label: 'Deductions Ledger', hint: 'Invoice-Deductions 2026.xlsm', sheets: ['Deduction'],
+    usedBy: 'Contractor Invoices — Deductions (rows already deducted)', inputs: ['con-ded-led-input'] },
   { id: 'tsrroot', kind: 'dir', label: 'TSR Root Folder', hint: 'Alya Sheets › TSR — then pick the TSR file below',
     usedBy: 'TSR file: Sub Prep · Validation · Sub Order · Planner — its Sub folder: Validation mails' }
 ];
